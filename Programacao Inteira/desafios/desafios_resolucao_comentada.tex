@@ -1,0 +1,1168 @@
+% Desafios de Programacao Inteira -- resolucao comentada (GCC118, UFLA)
+% Compilar a partir desta pasta:  tectonic desafios_resolucao_comentada.tex   (ou pdflatex/xelatex, duas vezes)
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage[brazil]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{icomma}
+\usepackage{booktabs,array}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\setlist{leftmargin=*,itemsep=1pt,topsep=3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\arraystretch}{1.15}
+\allowdisplaybreaks
+
+% Bloco numerado: "Bloco 1 -- Roteamento"; subsecoes ficam 1.1, 1.2, ...
+\newcommand{\bloco}[1]{%
+  \clearpage\refstepcounter{section}%
+  \section*{Bloco \thesection\ --- #1}%
+  \addcontentsline{toc}{section}{Bloco \thesection\ --- #1}}
+\newcommand{\enunciado}{\par\textbf{Enunciado.}\ }
+\newcommand{\tarefa}{\par\textbf{Tarefa.}\ }
+\newcommand{\passo}[1]{\par\medskip\textbf{#1}\par}
+\newcommand{\porque}{\textit{Por quê?}\ }
+\newenvironment{nota}[1]{\par\smallskip\begin{list}{}{\leftmargin=1.2em\rightmargin=0pt}\item[]\textbf{#1.}\ }{\end{list}}
+
+\title{\textbf{Desafios de Programação Inteira}\\[4pt]\large Enunciados e resolução comentada, passo a passo}
+\author{GCC118 --- Programação Matemática (UFLA)\\[2pt]\small Enunciados e gabarito originais: Mayron (28/10/2026)}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent Este documento reescreve o gabarito dos desafios de programação inteira pensando em quem está
+vendo esse tipo de exercício pela primeira vez. Cada resolução segue o mesmo roteiro (o que decidir,
+quais variáveis, qual objetivo, quais restrições, qual a solução) e explica \emph{por que} cada escolha foi
+feita. Todos os valores ótimos citados foram conferidos resolvendo os modelos com PuLP/CBC.
+\end{abstract}
+
+\tableofcontents
+
+% =====================================================================
+\clearpage
+\section*{Antes de começar: o roteiro e as ferramentas}
+\addcontentsline{toc}{section}{Antes de começar: o roteiro e as ferramentas}
+
+\subsection*{O roteiro de cinco perguntas}
+Todo modelo deste documento é construído respondendo, nesta ordem:
+\begin{enumerate}
+  \item \textbf{O que eu decido?} Liste as decisões em português antes de escrever qualquer símbolo.
+  \item \textbf{Que variáveis representam essas decisões?} Quantidades (km, unidades, horas) viram
+        variáveis contínuas; escolhas do tipo sim/não viram variáveis binárias.
+  \item \textbf{O que eu quero otimizar?} Escreva o objetivo como soma de (coeficiente $\times$ variável).
+  \item \textbf{O que me limita?} Traduza cada regra do enunciado em uma restrição e teste-a com
+        valores concretos (0 e 1 nas binárias).
+  \item \textbf{A resposta faz sentido?} Confira a solução contra o enunciado, à mão.
+\end{enumerate}
+
+\subsection*{Ferramenta A: a variável binária como interruptor}
+Uma variável $y\in\{0,1\}$ representa uma decisão sim/não: abrir um depósito, instalar uma câmera,
+pagar um pernoite. O que torna o problema ``inteiro'' é justamente não aceitar $y=0{,}5$: não existe meio
+depósito. Custos fixos (que não crescem com a quantidade) só podem ser modelados assim: o custo entra no
+objetivo como $f\cdot y$.
+
+\subsection*{Ferramenta B: o ``big-M'' (restrição que liga e desliga)}
+Queremos que uma restrição valha só quando uma binária assume certo valor. Exemplo:
+``se $y=0$, então $x\le 300$''. Escrevemos
+\[
+  x \le 300 + M\,y .
+\]
+Com $y=0$ fica $x\le 300$ (restrição ativa); com $y=1$ fica $x\le 300+M$, que, com $M$ grande o
+bastante, nunca atrapalha (restrição ``desligada'').
+
+\textbf{Como escolher $M$.} $M$ precisa ser \emph{grande o bastante} para não cortar nenhuma solução
+válida, mas deve ser \emph{o menor possível}. O motivo do ``menor possível'' é a relaxação linear (Ferramenta F):
+quanto maior o $M$, mais o solver consegue ``trapacear'' usando $y$ fracionário, e pior fica o limitante que ele
+usa para podar a árvore de busca.
+
+\subsection*{Ferramenta C: minimizar o máximo}
+``Minimizar o maior tempo entre as máquinas'' não é linear, porque $\max$ não é uma soma. O truque é criar
+uma variável $C$ e exigir que ela seja maior ou igual a cada termo:
+\[
+  \min C \quad\text{s.a.}\quad C \ge \text{carga}_i\ \ \forall i .
+\]
+Como $C$ é limitado por baixo por todas as cargas e o objetivo o empurra para baixo, no ótimo $C$ encosta
+na maior delas.
+
+\subsection*{Ferramenta D: disjunções (``ou isto, ou aquilo'')}
+``A tarefa termina antes de 6 \emph{ou} começa depois de 9'' descreve um conjunto com um buraco no
+meio, e programação linear só descreve conjuntos sem buracos (convexos). A saída é uma binária $w$ que
+escolhe o lado, mais dois big-M: um que ativa a primeira condição quando $w=0$ e outro que ativa a segunda
+quando $w=1$.
+
+\subsection*{Ferramenta E: produto de duas binárias}
+O produto $z=a\cdot b$ de binárias vale 1 só quando as duas valem 1. Ele é linearizado por
+\[
+  z \le a,\qquad z \le b,\qquad z \ge a+b-1,\qquad z\ge 0 .
+\]
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+$a$ & $b$ & restrições forçam & $a\cdot b$\\
+\midrule
+0 & 0 & $z=0$ & 0\\
+0 & 1 & $z=0$ & 0\\
+1 & 0 & $z=0$ & 0\\
+1 & 1 & $z=1$ & 1\\
+\bottomrule
+\end{tabular}
+\end{center}
+Muitas vezes só um dos lados é necessário. Se o objetivo já ``quer'' $z$ pequeno, bastam os limites
+inferiores; se ``quer'' $z$ grande, bastam os superiores (veja o exercício 5.1).
+
+\subsection*{Ferramenta F: relaxação linear e formulação forte}
+A \emph{relaxação linear} é o mesmo modelo com as binárias trocadas por variáveis contínuas em $[0,1]$.
+Ela é fácil de resolver e dá um limitante: em um problema de mínimo, o valor relaxado é menor ou igual ao
+ótimo inteiro. O \emph{branch-and-bound} usa esse limitante para descartar ramos. Dois modelos com as
+mesmas soluções inteiras podem ter relaxações muito diferentes; a formulação cuja relaxação fica mais
+perto do ótimo inteiro é a \textbf{mais forte} e costuma ser resolvida muito mais rápido.
+
+% =====================================================================
+\bloco{Roteamento}
+
+\subsection{Pernoite}
+\enunciado A transportadora Rota Sul planeja o dia de um único motorista, que pode combinar três tipos
+de trecho: urbano, rodovia e serra. Cada tipo tem um lucro por km, um limite diário de km (imposto pela
+demanda dos clientes) e um tempo médio por km. A jornada é de 8\,h e os km são contínuos.
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Trecho & Lucro (R\$/km) & Máximo (km) & Tempo (h/km)\\
+\midrule
+Urbano  & 3,00 & 150 & 0,04\\
+Rodovia & 2,20 & 450 & 0,0125\\
+Serra   & 4,00 & 120 & 0,05\\
+\bottomrule
+\end{tabular}
+\end{center}
+Se o motorista rodar mais de 300\,km no dia, ele não consegue voltar à base e a empresa paga um pernoite de
+R\$\,250 (a jornada de 8\,h não muda). O gerente quer o maior lucro líquido (lucro dos trechos menos o
+pernoite, quando houver). Um estagiário sugeriu ignorar o pernoite, ``porque é um custo pequeno perto do
+lucro''.
+
+\tarefa Modele o problema. Que valor você usa para o $M$ e por quê? Mostre o que acontece com a resposta
+se a sugestão do estagiário for seguida, isto é, se a regra do pernoite for esquecida.
+
+\passo{Passo 1 --- O que se decide?}
+Quantos km rodar em cada tipo de trecho e se haverá pernoite.
+
+\passo{Passo 2 --- Variáveis}
+\begin{itemize}
+  \item $x_1, x_2, x_3$: km rodados em urbano, rodovia e serra, com $0\le x_1\le150$, $0\le x_2\le450$,
+        $0\le x_3\le120$.
+  \item $y\in\{0,1\}$: $y=1$ se há pernoite.
+\end{itemize}
+\porque Os km são contínuos (o enunciado diz isso). Já o pernoite é tudo ou nada: ou se paga R\$\,250, ou não se
+paga nada. Um custo fixo desses só cabe em um modelo linear através de uma binária (Ferramenta A).
+
+\passo{Passo 3 --- Função objetivo}
+\[
+  \max\ 3x_1 + 2{,}2x_2 + 4x_3 - 250\,y .
+\]
+\porque Lucro por km vezes km, somado nos três trechos, menos 250 apenas quando $y=1$.
+
+\passo{Passo 4 --- Restrições}
+\begin{align*}
+  0{,}04x_1 + 0{,}0125x_2 + 0{,}05x_3 &\le 8 && \text{(jornada: h/km $\times$ km = h)}\\
+  x_1 + x_2 + x_3 &\le 300 + M\,y && \text{(ligação entre km e pernoite)}
+\end{align*}
+\porque A regra diz ``se rodar mais de 300\,km, então há pernoite''. É mais fácil escrever a forma
+equivalente (contrapositiva): ``se não há pernoite ($y=0$), então o total é no máximo 300''. É exatamente o
+big-M da Ferramenta B:
+\begin{itemize}
+  \item $y=0$: $x_1+x_2+x_3\le300$, o motorista volta para a base;
+  \item $y=1$: $x_1+x_2+x_3\le300+M$, a restrição deixa de limitar e o pernoite é pago no objetivo.
+\end{itemize}
+Note que nada impede $y=1$ com menos de 300\,km, mas isso só custaria R\$\,250 à toa, e o solver, que
+maximiza, nunca faz isso.
+
+\passo{Passo 5 --- Qual $M$?}
+O $M$ precisa permitir qualquer plano válido com pernoite, ou seja,
+\[
+  M \ge (\text{maior total possível de km}) - 300 .
+\]
+\begin{itemize}
+  \item \textbf{Escolha simples:} somando os máximos, $150+450+120=720$\,km, logo $M=720-300=420$. Já funciona.
+  \item \textbf{Escolha melhor:} o tempo também limita os km. Para rodar o máximo de km em 8\,h, use primeiro
+        o trecho mais rápido. As velocidades são $1/\text{tempo}$: rodovia 80\,km/h, urbano 25\,km/h e serra 20\,km/h.
+        Rodovia inteira: 450\,km em 5,625\,h. Sobram 2,375\,h de urbano: $2{,}375\times25=59{,}375$\,km. O total
+        máximo é $509{,}375$\,km, logo basta $M=509{,}375-300\approx210$.
+\end{itemize}
+\porque Os dois valores dão o mesmo ótimo inteiro, mas a relaxação linear (com $y\in[0,1]$) vale
+$1062{,}44$ com $M=420$ e $944{,}88$ com $M=210$. O ótimo inteiro é 930, então o $M$ menor dá um limitante
+bem mais próximo (Ferramenta F).
+
+\passo{Passo 6 --- Solução}
+Ótimo: \textbf{930}, com $y=1$ e $x=(0;\ 450;\ 47{,}5)$.
+\begin{itemize}
+  \item Tempo: $450\times0{,}0125 + 47{,}5\times0{,}05 = 5{,}625 + 2{,}375 = 8$\,h (jornada cheia).
+  \item Lucro bruto: $2{,}2\times450 + 4\times47{,}5 = 990 + 190 = 1180$; líquido $1180-250=930$.
+  \item A melhor alternativa sem pernoite ($y=0$, até 300\,km) rende \textbf{864}, com
+        $x\approx(0;\ 186{,}7;\ 113{,}3)$. Como $930>864$, compensa pagar o pernoite.
+\end{itemize}
+
+\passo{Passo 7 --- E a sugestão do estagiário?}
+Sem a restrição de ligação, nada obriga $y=1$, então o solver escolhe $y=0$, roda os mesmos 497,5\,km e
+informa lucro de \textbf{1180}. É um plano que a regra da empresa não permite sem pagar o pernoite: o
+lucro real dele é 930, ou seja, o modelo superestima o resultado em R\$\,250. Aqui o plano não mudou,
+mas com outros dados esquecer a regra pode mudar a própria decisão.
+
+\begin{nota}{Erros típicos}
+Esquecer a restrição de ligação; escrever $x_1+x_2+x_3\le300\,y$, que obriga $y=1$ sempre que houver
+qualquer km; ou inverter o sentido da desigualdade.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Caixeiro viajante assimétrico}
+\enunciado Um veículo de laboratório sai da central (nó 0), passa por 5 pontos de coleta e volta à central.
+Algumas ruas têm mão única e outras estão em obras, então o custo $c_{ij}$ (minutos) de ir de $i$ a $j$ não é
+igual ao de $j$ a $i$. Cada ponto deve ser visitado exatamente uma vez; o objetivo é minimizar o custo total.
+Um analista propôs apenas exigir que cada ponto tenha um único sucessor e um único antecessor.
+\begin{center}
+\begin{tabular}{c|cccccc}
+\toprule
+De $\backslash$ Para & 0 & 1 & 2 & 3 & 4 & 5\\
+\midrule
+0 & --- & 14 & 8 & 16 & 5 & 6\\
+1 & 7 & --- & 15 & 5 & 20 & 10\\
+2 & 5 & 6 & --- & 17 & 17 & 6\\
+3 & 11 & 6 & 17 & --- & 5 & 7\\
+4 & 11 & 5 & 16 & 5 & --- & 11\\
+5 & 5 & 8 & 13 & 17 & 8 & ---\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa (a) Modele o problema; (b) a proposta do analista basta? Explique com um exemplo de solução que
+ela aceita e que não é um circuito único; (c) elimine os subciclos com uma formulação de tamanho polinomial
+e justifique por que ela funciona.
+
+\passo{Passo 1 --- O que se decide?}
+Em que ordem visitar os pontos. Uma ordem é o mesmo que um conjunto de ``trechos'' (arcos) usados: o
+circuito $0\to2\to1\to\cdots$ usa os arcos $(0,2)$, $(2,1)$, e assim por diante.
+
+\passo{Passo 2 --- Variáveis}
+$x_{ij}\in\{0,1\}$, com $x_{ij}=1$ se o veículo vai diretamente de $i$ para $j$ ($i\ne j$).
+
+\porque Cada arco é uma decisão sim/não. Como o problema é assimétrico, $x_{ij}$ e $x_{ji}$ são variáveis
+diferentes, com custos diferentes ($6\times5=30$ variáveis).
+
+\passo{Passo 3 --- Objetivo e restrições de grau (item a)}
+\begin{align*}
+  \min\ & \sum_{i\ne j} c_{ij}\,x_{ij}\\
+  \text{s.a.}\ & \sum_{j\ne i} x_{ij} = 1 \quad \forall i && \text{(sai exatamente uma vez de cada nó)}\\
+  & \sum_{i\ne j} x_{ij} = 1 \quad \forall j && \text{(chega exatamente uma vez em cada nó)}
+\end{align*}
+\porque ``Visitar exatamente uma vez'' significa chegar uma vez e sair uma vez. Essas duas famílias de
+restrições são exatamente a proposta do analista (o chamado \emph{problema de designação}).
+
+\passo{Passo 4 --- A proposta basta? (item b)}
+\textbf{Não.} Só com as restrições de grau, o ótimo cai para \textbf{34} com dois ciclos separados:
+\[
+  0\to2\to5\to0 \ (8+6+5=19) \qquad\text{e}\qquad 1\to3\to4\to1 \ (5+5+5=15).
+\]
+Cada nó tem um sucessor e um antecessor, mas o veículo nunca vai do primeiro grupo para o segundo: são dois
+\emph{subciclos}, e não uma rota. Por isso é preciso uma restrição extra que proíba ciclos que não passam pela central.
+
+\passo{Passo 5 --- Eliminando subciclos com MTZ (item c)}
+Crie, para cada ponto $i=1,\dots,5$, uma variável contínua $u_i$ que representa a \emph{posição} do ponto na
+rota, com $1\le u_i\le5$, e imponha (Miller--Tucker--Zemlin):
+\[
+  u_i - u_j + 5\,x_{ij} \le 4 \qquad i,j\in\{1,\dots,5\},\ i\ne j .
+\]
+\porque Teste os dois valores da binária:
+\begin{itemize}
+  \item $x_{ij}=1$: fica $u_j \ge u_i + 1$. Se o veículo vai de $i$ para $j$, a posição de $j$ é maior que a de $i$.
+  \item $x_{ij}=0$: fica $u_i-u_j\le4$, que é sempre verdade, pois as posições estão entre 1 e 5. A restrição
+        fica desligada.
+\end{itemize}
+Num subciclo sem a central, por exemplo $1\to3\to4\to1$, teríamos $u_3\ge u_1+1$, $u_4\ge u_3+1$ e
+$u_1\ge u_4+1$. Somando as três, $0\ge3$: impossível. Já o ciclo que passa pelo nó 0 é permitido,
+porque não há restrição MTZ para arcos que tocam o 0: é ali que a numeração ``recomeça''. O modelo tem
+cerca de $n^2$ restrições a mais, um tamanho polinomial. A alternativa clássica, uma restrição por
+subconjunto de nós, tem $2^n$ restrições.
+
+\passo{Passo 6 --- Solução}
+Ótimo: \textbf{40}, rota $0\to2\to1\to3\to4\to5\to0$ ($8+6+5+5+11+5=40$). Há outra rota com o mesmo
+custo, $0\to2\to5\to4\to3\to1\to0$ ($8+6+8+5+6+7=40$); o solver pode devolver qualquer uma das duas.
+
+\begin{nota}{Outras respostas aceitas}
+Cortes por subconjunto (exponenciais) ou fluxo de mercadoria (Gavish--Graves), desde que justificados.
+\textit{Bônus} (Desrochers--Laporte): $u_i-u_j+5x_{ij}+3x_{ji}\le4$, mais forte porque aproveita também o
+arco contrário.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Caixeiro com janelas de tempo}
+\enunciado Uma empresa de refeições refrigeradas sai da cozinha, na posição $(0,0)$, no instante 0, com um
+único veículo, e precisa atender 5 clientes. O tempo de viagem é a distância de Manhattan
+($|\Delta x|+|\Delta y|$). Cada cliente tem uma janela $[a,b]$ para o \emph{início} do atendimento, que dura o
+tempo da tabela. Chegando antes de $a$, o veículo espera; chegar depois de $b$ não é permitido. O objetivo é
+minimizar o instante do retorno à cozinha.
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+Cliente & Posição & Serviço (min) & Janela $[a,b]$\\
+\midrule
+1 & (3, 3) & 1 & [14, 24]\\
+2 & (5, 2) & 1 & [2, 15]\\
+3 & (3, 2) & 3 & [7, 14]\\
+4 & (7, 4) & 1 & [17, 30]\\
+5 & (4, 3) & 1 & [11, 22]\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Modele o problema com variáveis de tempo. Como a espera entra no modelo? As variáveis de tempo
+já impedem subciclos? Justifique.
+
+\passo{Passo 1 --- O que se decide?}
+A ordem dos clientes (como no 1.2) e o instante em que cada atendimento começa.
+
+\passo{Passo 2 --- Variáveis e a cópia do depósito}
+\begin{itemize}
+  \item Dois nós para a cozinha: \textbf{nó 0} (saída, $t_0=0$) e \textbf{nó 6} (retorno).
+  \item $x_{ij}\in\{0,1\}$: o veículo vai de $i$ para $j$.
+  \item $t_i\ge0$: instante de início do atendimento no cliente $i$ (e, para o nó 6, o instante de chegada).
+\end{itemize}
+\porque Se a cozinha fosse um nó só, a mesma variável $t_0$ teria de valer 0 (saída) e também o instante do
+retorno, que é o que queremos minimizar. Duplicando o nó, cada papel ganha sua própria variável.
+
+\passo{Passo 3 --- Objetivo}
+$\min\ t_6$: o expediente acaba quando o veículo chega de volta.
+
+\passo{Passo 4 --- Restrições}
+\begin{align*}
+  & \textstyle\sum_{j} x_{0j}=1,\qquad \sum_{i} x_{i6}=1 && \text{(sai uma vez da cozinha e volta uma vez)}\\
+  & \textstyle\sum_{j} x_{ij}=1,\qquad \sum_{j} x_{ji}=1 \quad \forall\, i=1,\dots,5 && \text{(designação, como no 1.2)}\\
+  & a_i \le t_i \le b_i && \text{(janelas)}\\
+  & t_j \ge t_i + s_i + d_{ij} - M_{ij}\,(1-x_{ij}) && \text{(encadeamento dos tempos)}
+\end{align*}
+\porque A última restrição é um big-M que traduz ``se $x_{ij}=1$, então $t_j\ge t_i+s_i+d_{ij}$'': o
+atendimento em $j$ só começa depois de terminar $i$ ($t_i+s_i$) e viajar até $j$ ($d_{ij}$). Com $x_{ij}=0$
+ela precisa ficar desligada para quaisquer tempos dentro das janelas. O pior caso é $t_i=b_i$ e $t_j=a_j$,
+o que dá
+\[
+  M_{ij} = b_i + s_i + d_{ij} - a_j \quad(\text{ou 0, se der negativo}).
+\]
+Um $M$ calculado par a par é bem menor que um ``$M=1000$'' genérico, pelos motivos da Ferramenta B.
+
+\passo{Passo 5 --- Como a espera entra?}
+Pelo sinal $\ge$. A chegada em $j$ é $t_i+s_i+d_{ij}$, mas $t_j$ pode ser \emph{maior} que isso; a diferença é
+a espera. Se escrevêssemos $=$, o veículo seria obrigado a começar no instante em que chega, e chegar ao
+cliente 3 no instante 5 (antes de $a_3=7$) tornaria a rota ótima inviável.
+
+\passo{Passo 6 --- Os tempos já impedem subciclos?}
+\textbf{Sim.} Num ciclo de clientes $i_1\to i_2\to\cdots\to i_1$, as restrições ativas dariam
+$t_{i_1}\ge t_{i_1}+(\text{soma de serviços e distâncias})>t_{i_1}$, o que é impossível. É o mesmo mecanismo do MTZ
+do 1.2: o tempo funciona como um rótulo que só cresce ao longo da rota.
+
+\passo{Passo 7 --- Solução}
+Ótimo: \textbf{31}, rota $0\to3\to2\to4\to5\to1\to0$.
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+Trecho & Distância & Chegada & Início (janela) & Espera & Saída\\
+\midrule
+$0\to3$ & 5 & 5  & 7 \ [7, 14]   & 2 & 10\\
+$3\to2$ & 2 & 12 & 12 \ [2, 15]  & 0 & 13\\
+$2\to4$ & 4 & 17 & 17 \ [17, 30] & 0 & 18\\
+$4\to5$ & 4 & 22 & 22 \ [11, 22] & 0 & 23\\
+$5\to1$ & 1 & 24 & 24 \ [14, 24] & 0 & 25\\
+$1\to0$ & 6 & 31 & ---           & --- & ---\\
+\bottomrule
+\end{tabular}
+\end{center}
+A rota de menor distância ($0\to1\to5\to4\to2\to3\to0$, 22 de distância) chega ao cliente 2 no instante
+26, depois do fim da janela dele (15). Das $5!=120$ ordens possíveis, só 7 respeitam todas as janelas.
+
+\begin{nota}{Erros típicos}
+$M$ pequeno demais (corta rotas válidas); igualdade em vez de $\ge$ (proíbe esperar); esquecer a cópia
+do depósito.
+\end{nota}
+
+% =====================================================================
+\bloco{Localização de facilidades}
+
+\subsection{Câmeras com redundância}
+\enunciado A segurança do campus vai instalar câmeras. Há 8 pontos sensíveis e 5 locais possíveis (A a E);
+cada local enxerga alguns pontos, e o orçamento cobre no máximo 3 câmeras. Cada ponto tem um peso
+(fluxo de pessoas) e um nível de exigência $r$: um ponto comum ($r=1$) está monitorado se pelo menos uma câmera
+instalada o enxerga; um ponto crítico ($r=2$) só conta se pelo menos \emph{duas} câmeras o enxergarem.
+O objetivo é maximizar a soma dos pesos dos pontos monitorados.
+\begin{center}
+\begin{tabular}{lcccccccc}
+\toprule
+Ponto & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8\\
+\midrule
+Peso $w$ & 3 & 4 & 2 & 6 & 2 & 6 & 9 & 8\\
+$r$      & 2 & 1 & 1 & 2 & 2 & 1 & 1 & 1\\
+\bottomrule
+\end{tabular}
+\qquad
+\begin{tabular}{lc}
+\toprule
+Câmera & Pontos vistos\\
+\midrule
+A & 3, 5, 8\\
+B & 1, 2, 4, 5\\
+C & 2, 4, 6, 8\\
+D & 2, 6, 7, 8\\
+E & 1, 6, 7\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Modele o problema com uma variável para ``câmera instalada'' e outra para ``ponto monitorado''.
+Qual restrição liga uma à outra? Ela muda para os pontos críticos? Por que basta que ela valha em um só
+sentido? Teste: o modelo aceita contar um ponto crítico visto por uma só câmera?
+
+\passo{Passo 1 --- Variáveis}
+\begin{itemize}
+  \item $y_j\in\{0,1\}$: $y_j=1$ se a câmera $j$ é instalada ($j\in\{A,\dots,E\}$);
+  \item $c_i\in\{0,1\}$: $c_i=1$ se o ponto $i$ conta como monitorado;
+  \item $N_j$: conjunto de pontos vistos pela câmera $j$ (dado).
+\end{itemize}
+\porque O objetivo soma pesos de pontos \emph{monitorados}, então precisamos de uma variável que diga se
+cada ponto conta ou não. A câmera, por sua vez, é a decisão de verdade.
+
+\passo{Passo 2 --- Objetivo e orçamento}
+\[
+  \max \sum_{i=1}^{8} w_i\,c_i \qquad\text{s.a.}\qquad \sum_j y_j \le 3 .
+\]
+
+\passo{Passo 3 --- A restrição de ligação}
+\[
+  r_i\,c_i \;\le \sum_{j:\ i\in N_j} y_j \qquad \forall i .
+\]
+\porque O lado direito conta quantas câmeras instaladas enxergam o ponto $i$. Se $c_i=1$, a contagem
+precisa ser pelo menos $r_i$: uma para pontos comuns e duas para críticos. Se $c_i=0$, a restrição fica
+$0\le\text{contagem}$, sempre verdadeira. Escrita ponto a ponto:
+\begin{align*}
+  2c_1 &\le y_B + y_E & c_2 &\le y_B + y_C + y_D & c_3 &\le y_A & 2c_4 &\le y_B + y_C\\
+  2c_5 &\le y_A + y_B & c_6 &\le y_C + y_D + y_E & c_7 &\le y_D + y_E & c_8 &\le y_A + y_C + y_D
+\end{align*}
+
+\passo{Passo 4 --- Por que um só sentido basta?}
+A restrição só diz ``\emph{se} o ponto conta, \emph{então} há câmeras suficientes''. Ela não obriga $c_i=1$ quando há
+câmeras suficientes. Isso não é necessário: como o objetivo \emph{maximiza} uma soma com pesos positivos,
+o solver sempre põe $c_i=1$ quando isso é permitido. O próprio objetivo garante o outro sentido.
+
+\passo{Passo 5 --- Solução e teste}
+Ótimo: \textbf{36}, com as câmeras B, C e E. Monitorados: 1 (B e E), 2, 4 (B e C), 6, 7 e 8, somando
+$3+4+6+6+9+8=36$.
+
+\textbf{Teste pedido:} com B, C e E o ponto 5 (crítico) é visto só por B, então $2c_5\le y_A+y_B=0+1$ dá
+$c_5\le\frac12$, e como $c_5$ é binária, $c_5=0$. O modelo \emph{não} conta o ponto. É justamente a
+integralidade que faz o trabalho aqui: na relaxação linear, $c_5=0{,}5$ seria aceito.
+
+\begin{nota}{Erro típico}
+Escrever $c_i\le\sum y_j$ sem o $r_i$. O modelo errado acha que todos os pontos estão cobertos e
+devolve 40 (por exemplo com A, C e E), mas nessa escolha os pontos críticos 1, 4 e 5 são vistos por uma câmera
+só. O valor real dela é $40-3-6-2=29$, bem abaixo do ótimo de 36.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Localização sem capacidade: formulação fraca ou forte?}
+\enunciado Uma distribuidora de medicamentos vai abastecer 6 clientes a partir de 4 locais candidatos a
+depósito, cada um com custo fixo de abertura; a capacidade não é restrição. O custo de abastecer o cliente $j$ a
+partir do depósito $i$ está na tabela. Cada cliente é abastecido por um único depósito, que precisa estar aberto.
+Minimize aberturas mais abastecimento. A equipe de TI propôs duas formas de impedir que um cliente seja
+ligado a um depósito fechado.
+\begin{center}
+\begin{tabular}{cc|cccccc}
+\toprule
+Depósito & Custo fixo & Cl.\,1 & 2 & 3 & 4 & 5 & 6\\
+\midrule
+1 & 25 & 13 & 14 & 8 & 2 & 8 & 15\\
+2 & 35 & 15 & 12 & 11 & 15 & 13 & 15\\
+3 & 35 & 6 & 13 & 15 & 6 & 15 & 3\\
+4 & 25 & 15 & 3 & 3 & 15 & 10 & 13\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa (a) Escreva o modelo com as duas propostas: uma só restrição por depósito (soma dos clientes
+ligados $\le 6\times$ abertura) e uma restrição por par (depósito, cliente); (b) as duas aceitam as mesmas
+soluções inteiras? (c) Exiba um ponto fracionário que satisfaça uma e viole a outra e conclua qual deve ficar.
+
+\passo{Passo 1 --- Variáveis}
+$y_i\in\{0,1\}$ (abrir o depósito $i$) e $x_{ij}\in\{0,1\}$ (cliente $j$ atendido pelo depósito $i$).
+
+\passo{Passo 2 --- Modelo (item a)}
+\begin{align*}
+  \min\ & \sum_i f_i\,y_i + \sum_{i,j} c_{ij}\,x_{ij}\\
+  \text{s.a.}\ & \sum_i x_{ij} = 1 \quad \forall j && \text{(cada cliente tem um único depósito)}\\
+  \text{fraca:}\ & \sum_j x_{ij} \le 6\,y_i \quad \forall i && \text{(4 restrições)}\\
+  \text{forte:}\ & x_{ij} \le y_i \quad \forall i,j && \text{(24 restrições)}
+\end{align*}
+\porque Na fraca, o 6 é o número máximo de clientes que um depósito pode atender: com $y_i=1$ a restrição
+nunca atrapalha, e com $y_i=0$ ela zera todos os $x_{ij}$ daquele depósito. A forte diz o mesmo cliente a cliente.
+
+\passo{Passo 3 --- Mesmas soluções inteiras? (item b)}
+\textbf{Sim.} Com $y_i$ binário só há dois casos. Se $y_i=0$, as duas forçam $x_{ij}=0$; se $y_i=1$, as duas
+ficam folgadas ($\sum_j x_{ij}\le6$ e $x_{ij}\le1$ são sempre verdade). Logo as duas têm o mesmo ótimo inteiro,
+\textbf{84}: abrir só o depósito 4, com $25 + (15+3+3+15+10+13) = 25+59 = 84$.
+
+\passo{Passo 4 --- Qual é melhor? (item c)}
+A diferença aparece na relaxação linear ($y,x\in[0,1]$):
+\begin{itemize}
+  \item \textbf{forte:} a relaxação dá 84, que já é inteiro: o solver resolve sem ramificar;
+  \item \textbf{fraca:} a relaxação dá $53{,}33$, com $y=(\tfrac13,\,0,\,\tfrac13,\,\tfrac13)$, o depósito 1 atendendo os
+        clientes 4 e 5, o 3 atendendo 1 e 6, e o 4 atendendo 2 e 3. Custo:
+        $\tfrac{25+35+25}{3} + (2+8)+(6+3)+(3+3) = 28{,}33+25 = 53{,}33$.
+\end{itemize}
+Esse ponto \textbf{satisfaz a fraca} (depósito 1: $2\le6\cdot\tfrac13=2$) e \textbf{viola a forte}
+($x_{14}=1>y_1=\tfrac13$). A fraca permite ``abrir um terço de depósito'' e mesmo assim atender dois clientes
+inteiros a partir dele.
+
+\porque Somando a forte em $j$, obtemos $\sum_j x_{ij}\le6\,y_i$, que é a fraca. Então todo ponto que satisfaz
+a forte satisfaz a fraca, mas não o contrário (o ponto acima). A região da forte está contida na da fraca e fica
+mais perto das soluções inteiras. Diferença entre o limitante e o ótimo: 0\% na forte e
+$(84-53{,}33)/84\approx36\%$ na fraca. \textbf{Fica a forte.}
+
+% ---------------------------------------------------------------------
+\subsection{Portes discretos e regras de negócio}
+\enunciado Um ano depois, cada depósito pode ser alugado em porte Pequeno (capacidade 30), Grande
+(capacidade 50) ou não ser aberto. Cada cliente é atendido por um único depósito e a soma das demandas
+ligadas a um depósito não pode passar da capacidade do porte escolhido. Demandas dos clientes 1 a 6:
+$(12, 10, 14, 9, 13, 10)$.
+\begin{center}
+\begin{tabular}{ccc|cccccc}
+\toprule
+Depósito & Fixo P & Fixo G & Cl.\,1 & 2 & 3 & 4 & 5 & 6\\
+\midrule
+1 & 20 & 30 & 2 & 3 & 3 & 11 & 12 & 13\\
+2 & 22 & 34 & 3 & 2 & 10 & 3 & 12 & 12\\
+3 & 25 & 38 & 12 & 11 & 11 & 2 & 3 & 3\\
+4 & 18 & 28 & 13 & 12 & 4 & 10 & 3 & 2\\
+\bottomrule
+\end{tabular}
+\end{center}
+(R1) Os depósitos 1 e 4 não podem funcionar ao mesmo tempo (licença ambiental). (R2) O depósito 4 só
+pode ser atendido se o depósito 3 também estiver aberto (estrada compartilhada).
+
+\tarefa Modele o problema. Como representar o porte (fechado, P ou G) com binárias, mantendo custo e
+capacidade lineares? Escreva R1 e R2 como restrições lineares e explique cada uma.
+
+\passo{Passo 1 --- Como representar o porte?}
+$z_{ik}\in\{0,1\}$, com $z_{ik}=1$ se o depósito $i$ é alugado no porte $k\in\{P,G\}$, e
+\[
+  z_{iP} + z_{iG} \le 1 \qquad \text{(no máximo um porte; os dois zero = fechado).}
+\]
+\porque A ideia ingênua seria uma inteira $p_i\in\{0,1,2\}$. Mas o custo (0, 20, 30 no depósito 1) e a capacidade
+(0, 30, 50) não são proporcionais a $p_i$: o Grande não custa o dobro do Pequeno. Com uma binária por opção, tudo vira
+soma simples:
+\[
+  \text{custo fixo}_i = f_{iP}z_{iP} + f_{iG}z_{iG}, \qquad \text{capacidade}_i = 30\,z_{iP} + 50\,z_{iG}.
+\]
+Para encurtar, chame $o_i = z_{iP}+z_{iG}$; essa expressão vale 1 se o depósito $i$ está aberto em qualquer porte.
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \min\ & \sum_{i,k} f_{ik}\,z_{ik} + \sum_{i,j} c_{ij}\,x_{ij}\\
+  \text{s.a.}\ & z_{iP}+z_{iG} \le 1 \quad\forall i, \qquad \sum_i x_{ij} = 1 \quad\forall j\\
+  & x_{ij} \le z_{iP}+z_{iG} \quad\forall i,j && \text{(ligação forte, lição do 2.2)}\\
+  & \sum_j d_j\,x_{ij} \le 30\,z_{iP} + 50\,z_{iG} \quad\forall i && \text{(capacidade do porte)}\\
+  \text{R1:}\ & o_1 + o_4 \le 1\\
+  \text{R2:}\ & o_4 \le o_3
+\end{align*}
+
+\passo{Passo 3 --- Por que R1 e R2 estão certas? (tabela-verdade)}
+\begin{center}
+\begin{tabular}{cc|cc}
+\toprule
+$o_1$ & $o_4$ & R1: $o_1+o_4\le1$ & Situação\\
+\midrule
+0 & 0 & ok & nenhum aberto\\
+1 & 0 & ok & só o 1\\
+0 & 1 & ok & só o 4\\
+1 & 1 & \textbf{viola} & os dois (proibido)\\
+\bottomrule
+\end{tabular}
+\qquad
+\begin{tabular}{cc|cc}
+\toprule
+$o_4$ & $o_3$ & R2: $o_4\le o_3$ & Situação\\
+\midrule
+0 & 0 & ok & \\
+0 & 1 & ok & \\
+1 & 1 & ok & 4 com acesso\\
+1 & 0 & \textbf{viola} & 4 sem o 3 (proibido)\\
+\bottomrule
+\end{tabular}
+\end{center}
+R1 é ``no máximo um dos dois''; R2 é ``se o 4 abre, o 3 abre''. As duas usam $o_i$, a soma dos portes, e
+por isso valem para \emph{qualquer} porte.
+
+\passo{Passo 4 --- Solução}
+Ótimo com R1 e R2: \textbf{80}. Depósito 1 Grande (clientes 1, 2, 3 e 5; carga $12+10+14+13=49$ de 50) e
+depósito 3 Pequeno (clientes 4 e 6; carga 19 de 30): $30+25+(2+3+3+12)+(2+3)=80$. Existe outro plano de custo
+80 (o 1 atende 1, 2, 3 e 4; o 3 atende 5 e 6).
+
+Efeito das regras: sem nenhuma, 72 (o ótimo usa os depósitos 1 e 4, o que viola as duas); só R1, 74;
+só R2, 79; as duas, 80. Uma regra a mais só pode \emph{remover} opções, então o custo nunca diminui.
+
+\begin{nota}{Erros típicos}
+Porte como inteira de 0 a 2 (custo e capacidade deixam de ser lineares); esquecer
+$z_{iP}+z_{iG}\le1$ (o solver ``alugaria os dois portes'' e somaria 80 de capacidade); escrever R2 só para um porte.
+\end{nota}
+
+% =====================================================================
+\bloco{Máquinas paralelas}
+
+\subsection{Janela de manutenção}
+\enunciado Uma única máquina de corte deve processar 4 pedidos com tempos $p=(4, 5, 3, 7)$ horas.
+A manutenção ocupa o intervalo de 6 a 9 e nenhum pedido pode estar em corte nesse período. Pedidos não
+podem ser interrompidos e a máquina corta um por vez. Minimize o instante em que o último pedido termina
+(\emph{makespan}).
+
+\tarefa Modele o problema. Onde estão as disjunções? Que valor você usa para o $M$ e por quê?
+
+\passo{Passo 1 --- Variáveis}
+\begin{itemize}
+  \item $s_j\ge0$: instante de início do pedido $j$;
+  \item $w_j\in\{0,1\}$: $w_j=1$ se o pedido $j$ roda depois da manutenção;
+  \item $y_{jk}\in\{0,1\}$ para cada par $j<k$: $y_{jk}=1$ se $j$ vem antes de $k$;
+  \item $C_{\max}$: makespan.
+\end{itemize}
+\porque As binárias aparecem porque há escolhas ``ou/ou'' (Ferramenta D), detalhadas no passo 3.
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \min\ & C_{\max}\\
+  \text{s.a.}\ & s_j + p_j \le 6 + M\,w_j && \text{(se $w_j=0$: termina até 6)}\\
+  & s_j \ge 9 - M\,(1-w_j) && \text{(se $w_j=1$: começa a partir de 9)}\\
+  & s_j + p_j \le s_k + M\,(1-y_{jk}) && \text{(se $y_{jk}=1$: $j$ antes de $k$)}\\
+  & s_k + p_k \le s_j + M\,y_{jk} && \text{(se $y_{jk}=0$: $k$ antes de $j$)}\\
+  & C_{\max} \ge s_j + p_j \quad\forall j && \text{(Ferramenta C)}
+\end{align*}
+
+\passo{Passo 3 --- Onde estão as disjunções?}
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Manutenção:} cada pedido termina até 6 \emph{ou} começa a partir de 9. Para o pedido 1, por exemplo,
+        $s_1\in[0,2]\cup[9,\infty)$, um conjunto com buraco que nenhuma restrição linear sozinha descreve.
+        A binária $w_j$ escolhe o lado.
+  \item \textbf{Não sobreposição:} para cada par, $j$ termina antes de $k$ começar \emph{ou} o contrário. Com 4
+        pedidos são 6 pares e 6 binárias $y_{jk}$.
+\end{enumerate}
+Em cada par de restrições, uma binária ativa uma condição e desliga a outra. Vale testar com $w_j=0$ e
+$w_j=1$ para ver que sempre sobra exatamente uma condição ativa.
+
+\passo{Passo 4 --- Qual $M$?}
+Existe sempre um plano que termina até $9+19=28$ (pôr tudo depois da manutenção, sendo $19$ a soma dos tempos),
+e nunca vale a pena terminar depois disso. Assim, todos os instantes ficam em $[0, 28]$ (pode-se impor
+$s_j+p_j\le28$ explicitamente). Uma diferença entre dois instantes nunca passa de 28, então
+\textbf{$M=28$} desliga com segurança qualquer uma das restrições acima. Um $M$ como 1000 também funcionaria,
+mas enfraquece a relaxação (Ferramenta B).
+
+\passo{Passo 5 --- Solução e por que ela é ótima}
+Ótimo: \textbf{23}. Pedido 2 em $[0,5]$, máquina parada de 5 a 9, pedidos 1, 3 e 4 em $[9,13]$, $[13,16]$ e $[16,23]$.
+
+Para conferir à mão: antes da manutenção há só 6\,h livres e nenhum par de pedidos cabe nelas (o menor par é
+$4+3=7$). Então cabe no máximo um pedido antes de 6, e todo o resto termina em
+$9+(19-p_{\text{antes}})$. Para terminar o mais cedo possível, o pedido que vai antes deve ser o maior que cabe
+em 6\,h, o pedido 2, que dura 5\,h: $9+14=23$.
+
+\begin{nota}{Erros típicos}
+Trocar $y$ e $1-y$ entre as duas restrições do par (as duas ficam ativas ou as duas desligadas); impor
+$s_j\ge9$ e $s_j+p_j\le6$ ao mesmo tempo, sem binária, o que torna o modelo inviável.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Minimizar o makespan em máquinas idênticas}
+\enunciado Uma gráfica tem 3 impressoras idênticas e 7 pedidos com tempos $(5, 5, 4, 4, 3, 3, 3)$ horas. Cada
+pedido é impresso inteiro em uma só impressora. Minimize o instante em que a última impressora termina.
+
+\tarefa Qual é a variável de decisão e como o makespan aparece como o maior tempo entre as impressoras?
+
+\passo{Passo 1 --- Variável}
+$x_{ij}\in\{0,1\}$: o pedido $j$ é impresso na impressora $i$. \porque A única decisão é ``onde'' cada pedido
+vai; a ordem dentro de uma impressora não muda o instante em que ela termina.
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \min\ & C_{\max}\\
+  \text{s.a.}\ & \sum_i x_{ij} = 1 \quad\forall j && \text{(cada pedido em uma impressora)}\\
+  & \sum_j p_j\,x_{ij} \le C_{\max} \quad\forall i && \text{(carga de cada impressora)}
+\end{align*}
+\porque É a Ferramenta C. $C_{\max}$ é limitado por baixo pela carga de \emph{cada} impressora, e o objetivo o empurra
+para baixo, então no ótimo ele é igual à maior carga.
+
+\passo{Passo 3 --- Solução}
+Ótimo: \textbf{9}, com $\{5,4\}$, $\{5,4\}$ e $\{3,3,3\}$. Dá para provar sem solver: a soma dos tempos é 27, e
+em 3 impressoras alguma delas recebe pelo menos $27/3=9$. Logo nenhum plano termina antes de 9, e o plano
+acima atinge esse limite.
+
+\begin{nota}{Erro típico}
+Minimizar a soma das cargas. Ela é sempre 27, qualquer que seja a distribuição, então qualquer solução
+``seria ótima''.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Famílias de tarefas com setup}
+\enunciado Uma fábrica tem 3 prensas e 9 pedidos em 4 famílias (moldes). Se uma prensa processa pelo menos um
+pedido de uma família, paga o setup dessa família uma única vez. Cada prensa guarda no máximo 2 moldes,
+ou seja, processa até 2 famílias. O tempo de uma prensa é processamento mais setups; minimize o maior tempo.
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+Família & A & B & C & D\\
+\midrule
+Pedidos (tempo) & 1 (8), 2 (8), 3 (7) & 4 (8), 5 (5) & 6 (3), 7 (2) & 8 (6), 9 (7)\\
+Setup $S_f$ & 3 & 2 & 2 & 3\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Qual variável indica ``a prensa $i$ usa a família $f$''? Como ela se liga à alocação dos pedidos, ao
+tempo de setup e ao limite de 2 moldes?
+
+\passo{Passo 1 --- Variáveis}
+$x_{ij}\in\{0,1\}$ (pedido $j$ na prensa $i$) e $y_{if}\in\{0,1\}$ (prensa $i$ usa a família $f$). Seja $f(j)$ a
+família do pedido $j$.
+
+\porque O setup é cobrado por par (prensa, família), e não por pedido. Por isso a variável de setup precisa ter
+exatamente esses dois índices.
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \min\ & C_{\max}\\
+  \text{s.a.}\ & \sum_i x_{ij} = 1 \quad\forall j\\
+  & x_{ij} \le y_{i,f(j)} \quad\forall i,j && \text{(pedido da família $f$ na prensa $i$ exige o molde)}\\
+  & \sum_f y_{if} \le 2 \quad\forall i && \text{(no máximo 2 moldes por prensa)}\\
+  & \sum_j p_j\,x_{ij} + \sum_f S_f\,y_{if} \le C_{\max} \quad\forall i && \text{(processamento + setups)}
+\end{align*}
+\porque Com $x_{ij}\le y_{i,f(j)}$, basta um pedido da família $f$ na prensa $i$ para forçar $y_{if}=1$. Como $y_{if}$
+aparece uma única vez na carga, o setup é pago uma vez, não importa quantos pedidos daquela família a prensa receba.
+
+\passo{Passo 3 --- Precisa de $y_{if}\le\sum_j x_{ij}$?}
+Não. Ligar um $y_{if}$ sem necessidade só \emph{aumenta} a carga e ocupa um dos 2 moldes, nunca ajuda.
+Sempre existe uma solução ótima em que $y_{if}=0$ quando a prensa não usa a família. Cuidado: numa prensa
+que não é a mais carregada, o solver pode deixar um $y_{if}=1 $ ``fantasma'' sem alterar $C_{\max}$, então na hora de
+ler a solução olhe para os $x_{ij}$.
+
+\passo{Passo 4 --- Solução}
+Ótimo: \textbf{25}. Uma solução: prensa 1 com os pedidos 2 e 8 (famílias A e D: $8+6+3+3=20$), prensa 2 com 1, 3,
+6 e 7 (A e C: $8+7+3+2+3+2=25$), prensa 3 com 4, 5 e 9 (B e D: $8+5+7+2+3=25$). Sem o limite de 2 famílias o
+ótimo seria 24: o limite de moldes custa 1 hora.
+
+\begin{nota}{Erro típico}
+Cobrar o setup por pedido ($\sum_j S_{f(j)}x_{ij}$), o que faz uma prensa com três pedidos da família A pagar o setup três vezes.
+\end{nota}
+
+% =====================================================================
+\bloco{Linha de montagem}
+
+\subsection{Sudoku killer 4\texorpdfstring{$\times$}{x}4}
+\enunciado Preencha uma grade $4\times4$ com dígitos de 1 a 4, sem repetição em cada linha, coluna e quadrado
+$2\times2$. A grade começa vazia, dividida em \emph{gaiolas}: grupos de células cuja soma é obrigatória. Posições são
+(linha, coluna).
+\begin{center}
+\begin{tabular}{clc}
+\toprule
+Gaiola & Células & Soma\\
+\midrule
+a & (1,1), (1,2) & 5\\
+b & (1,3), (1,4), (2,3) & 6\\
+c & (2,1), (3,1) & 7\\
+d & (2,2), (3,2) & 3\\
+e & (2,4), (3,4) & 7\\
+f & (3,3), (4,3), (4,4) & 7\\
+g & (4,1), (4,2) & 5\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Escreva um modelo de PI cuja única solução é a grade. Que variáveis usar, se cada célula assume um valor
+de um conjunto discreto? Como escrever ``todos diferentes''? Como escrever a soma de uma gaiola?
+
+\passo{Passo 1 --- Por que não usar $x_{ij}\in\{1,2,3,4\}$?}
+Seria natural, mas ``todos diferentes'' viraria $x_{i1}\ne x_{i2}$, ou seja, $x_{i1}<x_{i2}$ \emph{ou}
+$x_{i1}>x_{i2}$: uma disjunção para cada par de células, com binárias e big-M. Fica grande e fraco.
+
+\passo{Passo 2 --- Variáveis: enumerar os valores}
+$y_{ijk}\in\{0,1\}$, com $y_{ijk}=1$ se a célula $(i,j)$ recebe o dígito $k$. O valor da célula é
+$\sum_k k\,y_{ijk}$.
+
+\porque Com uma binária por valor possível, a frase ``cada dígito aparece exatamente uma vez na linha'' vira uma
+soma igual a 1, que é linear e simples.
+
+\passo{Passo 3 --- Restrições}
+\begin{align*}
+  & \sum_k y_{ijk} = 1 \quad\forall i,j && \text{(cada célula recebe um dígito)}\\
+  & \sum_j y_{ijk} = 1 \quad\forall i,k && \text{(cada dígito uma vez por linha)}\\
+  & \sum_i y_{ijk} = 1 \quad\forall j,k && \text{(cada dígito uma vez por coluna)}\\
+  & \sum_{(i,j)\in Q} y_{ijk} = 1 \quad\forall k,\ \forall\text{ quadrado } Q && \text{(cada dígito uma vez por quadrado)}\\
+  & \sum_{(i,j)\in G}\ \sum_k k\,y_{ijk} = S_G \quad\forall\text{ gaiola } G && \text{(soma da gaiola)}
+\end{align*}
+\textbf{Objetivo:} nenhum (ou ``$\min 0$''). É um problema de \emph{viabilidade}: qualquer solução que
+satisfaça tudo serve.
+
+\passo{Passo 4 --- Solução e unicidade}
+\[
+\begin{array}{|cc|cc|}
+\hline
+1 & 4 & 3 & 2\\
+3 & 2 & 1 & 4\\
+\hline
+4 & 1 & 2 & 3\\
+2 & 3 & 4 & 1\\
+\hline
+\end{array}
+\]
+Conferindo as gaiolas: a $1+4=5$; b $3+2+1=6$; c $3+4=7$; d $2+1=3$; e $4+3=7$; f $2+4+1=7$; g $2+3=5$.
+
+\textbf{Como provar que é única:} sendo $g_{ij}$ o dígito encontrado na célula $(i,j)$, acrescente o corte
+\[
+  \sum_{i,j} y_{i,j,g_{ij}} \le 15 ,
+\]
+que exige que pelo menos uma das 16 células tenha dígito diferente. O modelo fica inviável, então não existe outra grade.
+
+\begin{nota}{Erro típico}
+Esquecer os quadrados $2\times2$ ou escrever a soma da gaiola como $\sum y_{ijk}$, sem o peso $k$. Essa soma
+conta quantas células há na gaiola, e não a soma dos dígitos.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Balanceamento de linha (SALBP-1)}
+\enunciado Nove tarefas de montagem devem ser distribuídas entre estações em série, com tempo de ciclo
+$C=10$ minutos (a soma dos tempos de uma estação não passa de 10). Se $i$ precede $j$, a estação de $i$ não pode
+vir depois da de $j$ (podem ser a mesma). Minimize o número de estações.
+\begin{center}
+\begin{tabular}{lccccccccc}
+\toprule
+Tarefa & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9\\
+\midrule
+Tempo & 6 & 2 & 5 & 5 & 6 & 2 & 3 & 5 & 5\\
+\bottomrule
+\end{tabular}
+\end{center}
+Precedências ($i\to j$): $1\to4$, $2\to3$, $3\to6$, $4\to6$, $4\to7$, $4\to8$, $6\to9$, $8\to9$.
+
+\tarefa Quantas estações você precisa considerar, no máximo? Como evitar soluções equivalentes que só trocam
+o nome das estações vazias?
+
+\passo{Passo 1 --- Quantas estações considerar?}
+No máximo $\bar S=9$: uma estação por tarefa é sempre viável, porque toda tarefa sozinha cabe em 10 minutos.
+\porque O modelo precisa de um número fixo de estações candidatas $s=1,\dots,\bar S$. É preciso garantir que esse
+número nunca corte a solução ótima, e 9 garante.
+
+\passo{Passo 2 --- Variáveis}
+$x_{is}\in\{0,1\}$ (tarefa $i$ na estação $s$) e $y_s\in\{0,1\}$ (estação $s$ é usada).
+
+\passo{Passo 3 --- Modelo}
+\begin{align*}
+  \min\ & \sum_s y_s\\
+  \text{s.a.}\ & \sum_s x_{is} = 1 \quad\forall i && \text{(cada tarefa em uma estação)}\\
+  & \sum_i t_i\,x_{is} \le 10\,y_s \quad\forall s && \text{(ciclo, e só em estação usada)}\\
+  & \sum_s s\,x_{is} \le \sum_s s\,x_{js} \quad\forall (i\to j) && \text{(número da estação de $i$ $\le$ o de $j$)}\\
+  & y_{s+1} \le y_s \quad s=1,\dots,8 && \text{(quebra de simetria)}
+\end{align*}
+\porque
+\begin{itemize}
+  \item A capacidade multiplicada por $y_s$ faz duas coisas: limita a estação a 10 minutos e impede pôr tarefas numa
+        estação ``desligada''.
+  \item $\sum_s s\,x_{is}$ é o \emph{número} da estação da tarefa $i$, porque só um $x_{is}$ vale 1. A precedência compara esses
+        números.
+  \item Sem $y_{s+1}\le y_s$, usar as estações $\{1,2,3,4,5\}$ ou $\{1,2,3,4,9\}$ seria a mesma coisa com nomes trocados, e o
+        solver perderia tempo explorando cada variante. Com a restrição, as estações usadas são sempre as primeiras.
+\end{itemize}
+
+\passo{Passo 4 --- Solução}
+Ótimo: \textbf{5} estações. Uma solução: $\{1,2\}$, $\{3,4\}$, $\{5,7\}$, $\{8\}$, $\{6,9\}$, com cargas 8, 10, 9, 5 e 7 (todas as
+precedências respeitadas). O limite de volume $\lceil 39/10\rceil=4$ não é atingido: o solver prova que as precedências
+impedem um encaixe em 4 estações.
+
+\begin{nota}{Bônus e erro típico}
+Uma precedência mais forte usa somas acumuladas: para todo $s$, $\sum_{s'\le s}x_{js'}\le\sum_{s'\le s}x_{is'}$
+(``se $j$ já foi feita até a estação $s$, $i$ também''). \textit{Erro típico:} escrever a capacidade sem $y_s$. Nesse caso
+nada liga as tarefas às estações usadas, e o modelo aceita 0 estações.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Linha com operadores diferentes entre si}
+\enunciado Uma linha tem 3 estações em série e 3 operadores (A, B, C); cada operador ocupa exatamente uma estação e
+cada estação tem exatamente um operador. O tempo de uma tarefa depende de quem a executa (``---'' significa que o
+operador não sabe fazê-la). Minimize o tempo de ciclo (maior tempo total entre as estações), respeitando as precedências
+$1\to2$, $1\to5$, $2\to4$, $3\to4$, $3\to6$, $5\to6$.
+\begin{center}
+\begin{tabular}{cccc}
+\toprule
+Tarefa & A & B & C\\
+\midrule
+1 & 4 & 8 & ---\\
+2 & 8 & --- & 9\\
+3 & 6 & 4 & ---\\
+4 & 7 & 6 & 6\\
+5 & --- & 5 & 4\\
+6 & --- & 3 & 5\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Que variáveis ligam tarefa, operador e estação? Como o tempo de uma estação passa a depender do operador
+que a ocupa sem criar um produto de variáveis de decisão?
+
+\passo{Passo 1 --- O problema do produto}
+Uma primeira ideia seria usar $a_{is}$ (tarefa $i$ na estação $s$) e $z_{ws}$ (operador $w$ na estação $s$). O tempo da
+estação seria
+\[
+  \sum_i\sum_w t_{iw}\; a_{is}\,z_{ws},
+\]
+um \emph{produto de duas variáveis de decisão}, que não é linear.
+
+\passo{Passo 2 --- Variáveis que evitam o produto}
+\begin{itemize}
+  \item $x_{iws}\in\{0,1\}$: a tarefa $i$ é feita pelo operador $w$ na estação $s$. Ela só é criada para pares $(i,w)$
+        permitidos; os traços simplesmente não viram variável;
+  \item $z_{ws}\in\{0,1\}$: o operador $w$ ocupa a estação $s$.
+\end{itemize}
+\porque $x_{iws}$ faz o papel do produto $a_{is}z_{ws}$ (Ferramenta E). Juntando os três índices numa só
+variável, o tempo $t_{iw}$ vira um simples coeficiente.
+
+\passo{Passo 3 --- Modelo}
+\begin{align*}
+  \min\ & C\\
+  \text{s.a.}\ & \sum_{w,s} x_{iws} = 1 \quad\forall i && \text{(cada tarefa uma vez)}\\
+  & x_{iws} \le z_{ws} && \text{($w$ só faz tarefas na estação que ocupa)}\\
+  & \sum_s z_{ws} = 1 \ \ \forall w, \qquad \sum_w z_{ws} = 1 \ \ \forall s && \text{(designação operador--estação)}\\
+  & \sum_i t_{iw}\,x_{iws} \le C \quad\forall w,s && \text{(tempo da estação, Ferramenta C)}\\
+  & \sum_{w,s} s\,x_{iws} \le \sum_{w,s} s\,x_{jws} \quad\forall (i\to j) && \text{(precedência, como no 4.2)}
+\end{align*}
+\porque Para os pares $(w,s)$ que não foram escolhidos, $z_{ws}=0$ zera todos os $x_{iws}$, e a soma do tempo vale 0.
+Só a combinação escolhida ``conta''.
+
+\passo{Passo 4 --- Solução}
+Ótimo: \textbf{12}. Estação 1 com o operador A (tarefas 1 e 2: $4+8=12$), estação 2 com B (tarefas 3 e 4: $4+6=10$),
+estação 3 com C (tarefas 5 e 6: $4+5=9$).
+
+\begin{nota}{Erros típicos}
+Criar variáveis para pares proibidos (traços) ou esquecer que cada operador ocupa uma única estação.
+\end{nota}
+
+% =====================================================================
+\bloco{Dimensionamento de lotes}
+
+\subsection{Bandeiras no tabuleiro}
+\enunciado Num tabuleiro $4\times4$, plante exatamente 6 bandeiras em casas diferentes. Cada casa vale os pontos da tabela;
+cada par de bandeiras vizinhas na horizontal rende $+4$ (aliança) e cada par vizinho na vertical custa $-6$ (bloqueio de
+suprimentos). Maximize a pontuação.
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+Linha & Col 1 & Col 2 & Col 3 & Col 4\\
+\midrule
+1 & 8 & 9 & 8 & 8\\
+2 & 9 & 4 & 3 & 9\\
+3 & 8 & 3 & 2 & 8\\
+4 & 5 & 3 & 2 & 9\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Como representar o bônus de um par (produto de duas binárias) de forma linear? As restrições de linearização são
+as mesmas para a aliança e para o conflito? Justifique.
+
+\passo{Passo 1 --- Variáveis}
+Numere as casas $c=1,\dots,16$ linha a linha. Assim, a casa à direita de $c$ é $c+1$ (se $c$ não está na coluna 4) e a de baixo é
+$c+4$ (se $c$ não está na linha 4).
+\begin{itemize}
+  \item $x_c\in\{0,1\}$: bandeira na casa $c$;
+  \item $h_c$: vale 1 se há bandeira em $c$ \emph{e} em $c+1$ (12 pares horizontais);
+  \item $v_c$: vale 1 se há bandeira em $c$ \emph{e} em $c+4$ (12 pares verticais).
+\end{itemize}
+\porque O bônus de um par é $4\,x_c\,x_{c+1}$, um produto. Trocamos cada produto por uma variável nova e
+amarramos essa variável com restrições lineares (Ferramenta E).
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \max\ & \sum_c P_c\,x_c + 4\sum_c h_c - 6\sum_c v_c\\
+  \text{s.a.}\ & \sum_c x_c = 6\\
+  & h_c \le x_c, \quad h_c \le x_{c+1} && \text{(só os limites superiores)}\\
+  & v_c \ge x_c + x_{c+4} - 1, \quad v_c \ge 0 && \text{(só o limite inferior)}
+\end{align*}
+
+\passo{Passo 3 --- Por que lados diferentes?}
+Pense no que o solver ``quer'':
+\begin{itemize}
+  \item $h_c$ tem coeficiente $+4$ num problema de máximo, então o solver quer $h_c$ \textbf{grande}. O perigo é ele pôr
+        $h_c=1$ sem que as duas casas tenham bandeira; isso é impedido pelos limites \emph{superiores}
+        $h_c\le x_c$ e $h_c\le x_{c+1}$. Quando as duas casas têm bandeira, ele mesmo empurra $h_c$ até 1.
+  \item $v_c$ tem coeficiente $-6$, então o solver quer $v_c$ \textbf{pequeno}. O perigo é ele deixar $v_c=0$ mesmo
+        com as duas casas ocupadas (fugindo da penalidade); isso é impedido pelo limite \emph{inferior}
+        $v_c\ge x_c+x_{c+4}-1$, que vale 1 quando as duas casas têm bandeira.
+\end{itemize}
+Assim, $h_c$ e $v_c$ podem até ser contínuas em $[0,1]$: com $x$ binário, o próprio objetivo os leva a 0 ou 1.
+
+\passo{Passo 4 --- Solução}
+Ótimo: \textbf{62}, com bandeiras em (1,1), (1,2), (1,3), (1,4), (3,1) e (4,4): casas $33+8+9=50$, três pares horizontais
+na linha 1 ($+12$) e nenhum par vertical.
+
+\begin{nota}{Erro típico}
+Linearizar a penalidade só com limites superiores ($v_c\le x_c$, $v_c\le x_{c+4}$). O solver põe $v_c=0$ sempre e ignora o
+conflito: devolve 63 com bandeiras em (1,1)--(1,4), (2,1) e (2,4). Essa escolha tem 2 pares verticais e vale de fato
+$63-12=51$. \textit{Para pensar:} se a aliança valesse $-4$, $h_c$ também passaria a precisar do limite inferior.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Dimensionamento de lotes com capacidade}
+\enunciado Uma fábrica produz uma tinta ao longo de 6 semanas. Em cada semana em que produz, paga um setup; a linha
+produz até 70 unidades por semana. O estoque inicial é zero e não há atraso. Estoque no fim da semana custa 2 por unidade;
+produzir custa 3 por unidade. Minimize o custo total.
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+Semana & 1 & 2 & 3 & 4 & 5 & 6\\
+\midrule
+Demanda $d_t$ & 30 & 50 & 20 & 60 & 25 & 45\\
+Setup $f_t$ & 120 & 100 & 140 & 110 & 100 & 120\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Modele o problema, incluindo o balanço de estoque. Que $M$ usar para ligar produção e setup? Existe um $M$ menor
+que a capacidade que continua válido?
+
+\passo{Passo 1 --- Variáveis}
+$x_t\ge0$ (produção na semana $t$), $s_t\ge0$ (estoque no fim da semana $t$), $y_t\in\{0,1\}$ (há setup na semana $t$).
+
+\passo{Passo 2 --- Balanço de estoque}
+\[
+  s_{t-1} + x_t - s_t = d_t, \qquad s_0 = 0 .
+\]
+\porque É a conservação: o que se tem (estoque anterior mais produção) é igual ao que sai (demanda mais o que sobra). Como
+$s_t\ge0$, a demanda de cada semana precisa ser coberta pelo que já foi produzido até ela, e é isso que proíbe o atraso.
+
+\passo{Passo 3 --- Ligação produção--setup e objetivo}
+\begin{align*}
+  \min\ & \sum_t \bigl(3x_t + 2s_t + f_t\,y_t\bigr)\\
+  \text{s.a.}\ & x_t \le M_t\,y_t, \qquad x_t \le 70
+\end{align*}
+\porque $x_t\le M_t\,y_t$ é um big-M: sem setup ($y_t=0$) não há produção. Note que o termo $3x_t$ é constante (a produção
+total é sempre a demanda total, 230), então ele soma 690 ao custo mas não influencia a decisão.
+
+\passo{Passo 4 --- Qual $M$?}
+\begin{itemize}
+  \item $M=70$ (a capacidade) já é válido.
+  \item Melhor: nunca vale a pena produzir na semana $t$ mais do que toda a demanda que ainda falta, pois o excedente viraria
+        estoque final, que só custa. Logo
+        \[
+          M_t = \min\Bigl\{70,\ \sum_{k\ge t} d_k\Bigr\}.
+        \]
+        As demandas restantes são 230, 200, 150, 130, 70 e 45, então só $M_6$ cai, para 45.
+\end{itemize}
+\porque Na relaxação linear, $y_t$ pode valer $x_t/M_t$, ou seja, paga-se só uma ``fração'' do setup. Quanto maior o $M$, menor
+essa fração e mais a relaxação subestima o custo. Com $M=70$ a relaxação vale 1060; com $M_t$ ela sobe para $1102{,}86$, mais
+perto do ótimo 1250.
+
+\passo{Passo 5 --- Solução}
+Ótimo: \textbf{1250}, produzindo $x=(30, 70, 0, 60, 70, 0)$, com setups nas semanas 1, 2, 4 e 5 e estoques
+$s=(0, 20, 0, 0, 45, 0)$. Custo: produção $3\times230=690$, setups $120+100+110+100=430$ e estoque
+$2\times(20+45)=130$.
+
+\textbf{Intuição:} a semana 3 (20 unidades) é produzida na 2, porque guardar 20 custa 40, menos que o setup de 140. A
+semana 6 (45) é produzida na 5, porque guardar custa 90, menos que o setup de 120. As semanas 1 e 2 não podem ser unidas, porque
+juntas pedem 80 e a capacidade é 70.
+
+\begin{nota}{Erros típicos e bônus}
+Esquecer o balanço de estoque ou deixar $y$ sem custo no objetivo. \textit{Bônus:} se atrasos fossem permitidos, usar
+$I_t = I_t^{+} - I_t^{-}$ (estoque menos atraso) e cobrar $h\,I_t^{+} + b\,I_t^{-}$. Isso funciona porque, com custos
+positivos, o ótimo nunca usa as duas partes ao mesmo tempo.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\subsection{Dois itens com tempo de setup e lote mínimo}
+\enunciado A fábrica agora produz duas tintas, A e B, na mesma linha, por 5 semanas. Cada semana tem 100 unidades de tempo,
+gastas com produção (1 por unidade) e com o tempo de setup de cada tinta produzida. Se uma tinta for produzida numa semana,
+o lote tem de ter pelo menos o tamanho mínimo dela. Sem estoque inicial e sem atraso. Minimize setups mais estoque.
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Dado & Tinta A & Tinta B\\
+\midrule
+Demanda (semanas 1 a 5) & 20, 30, 25, 35, 15 & 25, 15, 30, 20, 30\\
+Tempo de setup $\tau_i$ & 10 & 15\\
+Custo de setup $f_i$ & 150 & 220\\
+Custo de estoque $h_i$ (por unidade e semana) & 2 & 3\\
+Lote mínimo $m_i$ & 25 & 30\\
+\bottomrule
+\end{tabular}
+\end{center}
+\tarefa Como a capacidade da semana inclui o tempo de setup? Como escrever o lote mínimo, que só vale quando a tinta é
+produzida?
+
+\passo{Passo 1 --- Variáveis}
+As do 5.2, agora com o índice do item: $x_{it}$, $s_{it}$, $y_{it}$.
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \min\ & \sum_{i,t}\bigl(h_i\,s_{it} + f_i\,y_{it}\bigr)\\
+  \text{s.a.}\ & s_{i,t-1} + x_{it} - s_{it} = d_{it}, \quad s_{i0}=0 && \text{(balanço por item)}\\
+  & \sum_i \bigl(x_{it} + \tau_i\,y_{it}\bigr) \le 100 \quad\forall t && \text{(capacidade com setup)}\\
+  & m_i\,y_{it} \le x_{it} \le \bar M_{it}\,y_{it} && \text{(lote mínimo e ligação)}
+\end{align*}
+com $\bar M_{it} = \min\{100-\tau_i,\ \sum_{k\ge t} d_{ik}\}$ (o mesmo raciocínio do 5.2: nunca produzir mais do que cabe na
+semana depois do setup nem mais do que a demanda restante).
+
+\passo{Passo 3 --- Por quê, restrição por restrição}
+\begin{itemize}
+  \item \textbf{Capacidade:} o setup consome tempo só se a tinta é produzida, então o termo $\tau_i\,y_{it}$ entra na
+        mesma soma da produção. Com $y_{it}=0$ ele some.
+  \item \textbf{Lote mínimo:} é um ``se--então'': se $y_{it}=1$, então $x_{it}\ge m_i$. Escrito como $x_{it}\ge m_i\,y_{it}$: com
+        $y=0$ vira $x\ge0$ (nada muda); com $y=1$ vira $x\ge m_i$.
+  \item \textbf{Juntando os dois lados:} $x_{it}$ fica em $\{0\}\cup[m_i,\bar M_{it}]$. Ou não se produz nada, ou se produz
+        um lote de tamanho razoável.
+  \item O custo de produção não aparece porque não foi dado e, como no 5.2, seria constante.
+\end{itemize}
+
+\passo{Passo 4 --- Solução}
+Ótimo: \textbf{1265}. A produz $(25, 50, 0, 50, 0)$ e B produz $(40, 0, 80, 0, 0)$.
+\begin{itemize}
+  \item A: 3 setups ($450$) e estoques $5+25+0+15+0=45$ ($\times2=90$), total 540;
+  \item B: 2 setups ($440$) e estoques $15+0+50+30+0=95$ ($\times3=285$), total 725;
+  \item capacidade usada nas semanas 1 a 4: 90, 60, 95 e 60 (de 100).
+\end{itemize}
+Sem o lote mínimo o ótimo seria 1255: A produziria só 20 na semana 1, e o lote mínimo de 25 obriga a guardar 5
+unidades a mais ($5\times2=10$).
+
+\begin{nota}{Erro típico}
+Deixar o tempo de setup fora da restrição de capacidade. O modelo passa a achar que cabem mais unidades por semana do que
+realmente cabem.
+\end{nota}
+
+% =====================================================================
+\clearpage
+\section*{Resumo: qual técnica aparece em cada exercício}
+\addcontentsline{toc}{section}{Resumo: qual técnica aparece em cada exercício}
+\begin{center}
+\begin{tabular}{>{\raggedright}p{3.2cm}>{\raggedright}p{6.2cm}>{\raggedright\arraybackslash}p{4.8cm}}
+\toprule
+Exercício & Técnica principal & Ideia-chave\\
+\midrule
+1.1 Pernoite & custo fixo + big-M & menor $M$ válido $\Rightarrow$ relaxação melhor\\
+1.2 Caixeiro & designação + MTZ & rótulos crescentes matam subciclos\\
+1.3 Janelas de tempo & big-M de tempo, depósito duplicado & $\ge$ permite esperar\\
+2.1 Câmeras & cobertura com exigência $r_i$ & objetivo garante o outro sentido\\
+2.2 Localização & formulação fraca $\times$ forte & a forte está contida na fraca\\
+2.3 Portes & uma binária por opção; regras lógicas & tabela-verdade de R1 e R2\\
+3.1 Manutenção & disjunções com big-M & cada binária escolhe um lado\\
+3.2 Makespan & minimizar o máximo & $C\ge$ cada carga\\
+3.3 Famílias & variável por (prensa, família) & setup pago uma vez\\
+4.1 Sudoku & enumerar valores com binárias & ``todos diferentes'' vira soma $=1$\\
+4.2 Balanceamento & atribuição com precedência & quebra de simetria $y_{s+1}\le y_s$\\
+4.3 Operadores & variável com três índices & produto embutido na variável\\
+5.1 Bandeiras & linearização de produto & lado necessário depende do sinal\\
+5.2 Lotes & balanço de estoque + setup & $M_t$ = demanda restante\\
+5.3 Dois itens & setup na capacidade, lote mínimo & $x\in\{0\}\cup[m,\bar M]$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
