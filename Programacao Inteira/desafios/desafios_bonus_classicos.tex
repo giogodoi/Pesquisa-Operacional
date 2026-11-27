@@ -1,0 +1,669 @@
+% Bonus: exercicios classicos de programacao inteira por nivel (GCC118, UFLA)
+% Compilar a partir desta pasta:  tectonic desafios_bonus_classicos.tex   (ou pdflatex/xelatex, duas vezes)
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage[brazil]{babel}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{icomma}
+\usepackage{booktabs,array}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\setlist{leftmargin=*,itemsep=1pt,topsep=3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\arraystretch}{1.15}
+\allowdisplaybreaks
+
+% Bloco numerado: "Bloco 1 -- Roteamento"; subsecoes ficam 1.1, 1.2, ...
+\newcommand{\bloco}[1]{%
+  \clearpage\refstepcounter{section}%
+  \section*{Bloco \thesection\ --- #1}%
+  \addcontentsline{toc}{section}{Bloco \thesection\ --- #1}}
+\newcommand{\enunciado}{\par\textbf{Enunciado.}\ }
+\newcommand{\tarefa}{\par\textbf{Tarefa.}\ }
+\newcommand{\passo}[1]{\par\medskip\textbf{#1}\par}
+\newcommand{\porque}{\textit{Por quê?}\ }
+\newenvironment{nota}[1]{\par\smallskip\begin{list}{}{\leftmargin=1.2em\rightmargin=0pt}\item[]\textbf{#1.}\ }{\end{list}}
+
+\title{\textbf{Bônus: exercícios clássicos de Programação Inteira}\\[4pt]\large Por nível de dificuldade, com resolução comentada}
+\author{GCC118 --- Programação Matemática (UFLA)\\[2pt]\small Complemento ao documento \emph{Desafios de Programação Inteira --- resolução comentada}}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent Este documento bônus complementa a resolução comentada dos desafios. Ele começa explicando com calma o que é o
+big-M, a técnica que aparece em quase todos os modelos, e depois traz onze exercícios de problemas clássicos de
+programação inteira, nos moldes dos apresentados em Arenales et al.\ (2007), organizados em três níveis de dificuldade.
+Todos os valores ótimos citados foram conferidos com PuLP/CBC.
+\end{abstract}
+
+\tableofcontents
+
+\clearpage
+\section*{O que é o big-M (restrição que liga e desliga)}
+\addcontentsline{toc}{section}{O que é o big-M}
+
+\textbf{O problema que ele resolve.} Num modelo de programação linear ou inteira, toda restrição é do tipo
+``combinação linear das variáveis $\le$ (ou $\ge$, $=$) número'', e vale \emph{sempre}. Não existe a palavra ``se''. Mas os
+enunciados estão cheios de condições: \emph{se} houver pernoite, pode rodar mais de 300\,km; \emph{se} a máquina não for
+alugada, não se produz nada; o pedido termina antes da manutenção \emph{ou} começa depois dela. O big-M é o truque que
+simula esse ``se'' usando uma variável binária e uma constante grande, chamada $M$.
+
+\textbf{A ideia.} Some ao lado direito da restrição um termo que vale 0 quando a restrição deve valer e vale $M$, um
+número grande, quando ela deve ser ignorada. Exemplo, tirado do exercício 1.1 dos Desafios: um motorista que roda mais de
+300\,km no dia não volta à base e a empresa paga um pernoite. Com $x$ = km rodados e $y=1$ se há pernoite, a regra
+``se $y=0$ (não há pernoite), então $x\le300$'' fica:
+\[
+  x \le 300 + M\,y .
+\]
+\begin{center}
+\begin{tabular}{ccl}
+\toprule
+$y$ & a restrição vira & efeito\\
+\midrule
+0 & $x \le 300$ & \textbf{ativa}: a regra vale\\
+1 & $x \le 300 + M$ & \textbf{desligada}: com $M$ grande, nunca atrapalha\\
+\bottomrule
+\end{tabular}
+\end{center}
+Uma única restrição linear passa a se comportar de dois jeitos, conforme o valor da binária. Essa é a ideia inteira do big-M.
+
+\textbf{As formas gerais.} Para uma restrição $g(x)\le b$ (lado esquerdo $g(x)$, lado direito $b$):
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Quero que a restrição valha quando\ldots & Escrevo\\
+\midrule
+$y=1$ & $g(x) \le b + M\,(1-y)$\\
+$y=0$ & $g(x) \le b + M\,y$\\
+$y=1$, restrição do tipo $\ge$ & $g(x) \ge b - M\,(1-y)$\\
+\bottomrule
+\end{tabular}
+\end{center}
+Dica: o termo com $M$ deve ser \emph{zero} exatamente quando a restrição deve valer. Se ficar em dúvida, teste
+$y=0$ e $y=1$ e veja o que sobra.
+
+\textbf{Os três usos mais comuns.}
+\begin{enumerate}
+  \item \textbf{Ligar uma quantidade a uma decisão sim/não:} $x\le M\,y$, ou seja, ``se $y=0$, então $x=0$''.
+        Aparece em custo fixo, setup e abertura de depósito (exercício I1 deste bônus; 5.2 e 5.3 dos Desafios). Aqui o
+        $M$ é o maior valor que $x$ pode assumir.
+  \item \textbf{Ativar ou desativar uma restrição:} como no exemplo do pernoite e no encadeamento de tempos com janelas
+        (1.3 dos Desafios).
+  \item \textbf{``Ou-ou'' (disjunção):} duas restrições, uma com $M\,y$ e outra com $M\,(1-y)$. Com $y=0$ só a primeira
+        vale; com $y=1$, só a segunda (I2 e A2 deste bônus; 3.1 dos Desafios).
+\end{enumerate}
+
+\textbf{Como calcular o $M$ a partir dos dados.} Siga três passos:
+\begin{enumerate}
+  \item escreva como a restrição fica quando está \emph{desligada}: $g(x)\le b+M$;
+  \item descubra o \textbf{maior valor} que $g(x)$ pode assumir em qualquer solução que deva continuar permitida, usando os
+        limites do problema (capacidades, horizonte de tempo, demandas);
+  \item tome $M = (\text{maior valor de } g(x)) - b$.
+\end{enumerate}
+No pernoite, o maior total de km que cabe na jornada de 8\,h é 509,375 (dado do exercício), então $M=509{,}375-300\approx210$. Na ligação $x\le My$, o maior valor
+de $x$ é o próprio $M$: a capacidade, ou algo menor que os dados garantam.
+
+\textbf{Por que não usar simplesmente $M=10^9$?} Porque, embora o modelo continue correto no papel, ele fica
+\emph{pior} na prática, por dois motivos:
+\begin{itemize}
+  \item \textbf{Relaxação fraca.} O branch-and-bound resolve versões em que $y$ pode ser fracionário. Com $x\le My$,
+        basta $y=x/M$. No pernoite, rodando 497,5\,km, a relaxação precisa de $y\ge197{,}5/M$:
+        \begin{center}
+        \begin{tabular}{ccc}
+        \toprule
+        $M$ & menor $y$ na relaxação & pernoite ``pago'' ($250\,y$)\\
+        \midrule
+        210 & 0,94 & R\$\,235\\
+        420 & 0,47 & R\$\,118\\
+        $10^6$ & 0,0002 & R\$\,0,05\\
+        \bottomrule
+        \end{tabular}
+        \end{center}
+        Com $M$ enorme, o custo fixo praticamente some da relaxação, e o limitante fica longe do ótimo. Como o
+        branch-and-bound usa esse limitante para descartar ramos, ele poda menos e demora mais.
+  \item \textbf{Erros numéricos.} Solvers aceitam uma binária ``quase zero'', como $y=10^{-7}$, por tolerância. Com
+        $M=10^9$, esse $y$ ``zero'' libera $x\le100$, e a regra é violada sem aviso.
+\end{itemize}
+\textbf{Resumo:} o $M$ deve ser \emph{grande o bastante} para não cortar nenhuma solução válida e \emph{o menor possível}
+dentro disso. Sempre que usar um big-M, indique de onde ele veio.
+
+\clearpage
+\section*{Como usar este bônus}
+\addcontentsline{toc}{section}{Como usar este bônus}
+
+Os exercícios a seguir cobrem os problemas clássicos de otimização discreta apresentados em Arenales et al.\ (2007):
+mochila, designação, cobertura, escala de pessoal, custo fixo, restrições ``ou-ou'' e ``se-então'', corte, funções
+lineares por partes, particionamento, job shop e roteamento. Os enunciados e os dados foram elaborados para este
+material, no estilo dos exemplos do livro, e todos os ótimos foram conferidos com PuLP/CBC.
+
+\begin{itemize}
+  \item \textbf{Nível 1 --- Básico:} uma ideia de modelagem por exercício, só com binárias ou inteiras simples.
+  \item \textbf{Nível 2 --- Intermediário:} exige uma técnica de ligação (big-M, ou-ou, se-então, padrões, segmentos).
+  \item \textbf{Nível 3 --- Avançado:} modelos com várias famílias de restrições interagindo, próximos de problemas reais.
+\end{itemize}
+Sugestão de estudo: tente modelar sozinho a partir do enunciado e só depois leia o passo a passo.
+
+\newcommand{\exercicio}[1]{\subsection*{#1}\addcontentsline{toc}{subsection}{#1}}
+
+% =====================================================================
+\clearpage
+\section*{Nível 1 --- Básico}
+\addcontentsline{toc}{section}{Nível 1 --- Básico}
+
+\exercicio{B1. Seleção de projetos (mochila com regras lógicas)}
+\enunciado Uma prefeitura tem R\$\,120 mil para investir e seis projetos candidatos, cada um com custo e retorno social
+estimado (em R\$ mil). Cada projeto é feito inteiro ou não é feito. Regras: (a) os projetos 2 e 3 disputam o mesmo terreno,
+então no máximo um deles pode ser feito; (b) o projeto 6 depende da estrutura do projeto 4; (c) os projetos 1 e 5 fazem
+parte do mesmo convênio e devem ser feitos juntos ou nenhum deles. Maximize o retorno total.
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+Projeto & 1 & 2 & 3 & 4 & 5 & 6\\
+\midrule
+Custo $c_i$ & 40 & 30 & 25 & 50 & 20 & 35\\
+Retorno $r_i$ & 60 & 45 & 35 & 80 & 25 & 50\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\passo{Passo 1 --- Variáveis}
+$x_i\in\{0,1\}$: $x_i=1$ se o projeto $i$ é executado. \porque ``Feito inteiro ou não feito'' é uma escolha sim/não.
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \max\ & 60x_1 + 45x_2 + 35x_3 + 80x_4 + 25x_5 + 50x_6\\
+  \text{s.a.}\ & 40x_1 + 30x_2 + 25x_3 + 50x_4 + 20x_5 + 35x_6 \le 120 && \text{(orçamento: a ``mochila'')}\\
+  & x_2 + x_3 \le 1 && \text{(a) no máximo um}\\
+  & x_6 \le x_4 && \text{(b) se 6, então 4}\\
+  & x_1 = x_5 && \text{(c) os dois ou nenhum}
+\end{align*}
+\porque Cada regra lógica vira uma relação simples entre binárias. ``No máximo um'' é soma $\le1$. ``Se 6 então 4'' só
+proíbe $(x_6,x_4)=(1,0)$, por isso usa $\le$. ``Juntos ou nenhum'' é a equivalência, que se escreve com igualdade.
+
+\passo{Passo 3 --- Solução}
+Ótimo: \textbf{175}, com os projetos 2, 4 e 6 (custo $30+50+35=115$). Sem as regras o ótimo seria 185 (projetos 1, 2 e 4),
+mas esse plano faz o projeto 1 sem o 5 e viola a regra (c).
+
+A relaxação linear vale $182{,}08$: ela usa $x_1=x_5\approx0{,}083$ para gastar os R\$\,5 mil que sobram do orçamento.
+É o comportamento típico da mochila relaxada, que ``preenche'' a capacidade com um pedaço de item.
+
+\begin{nota}{Erro típico}
+Escrever ``se 6 então 4'' como $x_6=x_4$. Isso obrigaria a fazer o 6 sempre que o 4 fosse feito, o que a regra não pede.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\exercicio{B2. Designação de tarefas}
+\enunciado Quatro funcionários (A, B, C, D) devem receber quatro tarefas, uma para cada. O tempo (em horas) que cada
+funcionário leva em cada tarefa está na tabela. Minimize o tempo total.
+\begin{center}
+\begin{tabular}{c|cccc}
+\toprule
+ & T1 & T2 & T3 & T4\\
+\midrule
+A & 9 & 2 & 7 & 8\\
+B & 6 & 4 & 3 & 7\\
+C & 5 & 8 & 1 & 8\\
+D & 7 & 6 & 9 & 4\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\passo{Passo 1 --- Variáveis e modelo}
+$x_{ij}\in\{0,1\}$: o funcionário $i$ faz a tarefa $j$.
+\begin{align*}
+  \min\ & \sum_{i,j} t_{ij}\,x_{ij}\\
+  \text{s.a.}\ & \sum_j x_{ij} = 1 \quad\forall i && \text{(cada funcionário, uma tarefa)}\\
+  & \sum_i x_{ij} = 1 \quad\forall j && \text{(cada tarefa, um funcionário)}
+\end{align*}
+
+\passo{Passo 2 --- Solução}
+Ótimo: \textbf{13}, com A$\to$T2 (2), B$\to$T1 (6), C$\to$T3 (1) e D$\to$T4 (4).
+
+\passo{Passo 3 --- A lição: a relaxação já é inteira}
+Resolvendo o modelo com $0\le x_{ij}\le1$ \emph{contínuas}, o solver devolve a mesma solução inteira, com valor 13.
+\porque A matriz de restrições da designação é \emph{totalmente unimodular}: todo vértice do poliedro da relaxação tem
+coordenadas inteiras. Na prática, a designação (assim como transporte e fluxo em redes com dados inteiros) pode ser
+resolvida como programação linear, sem branch-and-bound. Isso não vale para os demais exercícios deste material.
+
+% ---------------------------------------------------------------------
+\exercicio{B3. Cobertura de conjuntos: bases de ambulância}
+\enunciado Uma cidade tem 8 bairros e 6 locais candidatos para bases de ambulância. Um bairro está coberto se alguma
+base instalada chega até ele em no máximo 10 minutos. A tabela mostra quais bairros cada local cobre. Todos os bairros
+precisam ser cobertos. (a) Qual é o menor número de bases? (b) E se cada local tiver um custo de instalação
+($50, 40, 45, 30, 55, 35$ para L1 a L6)?
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+Local & L1 & L2 & L3 & L4 & L5 & L6\\
+\midrule
+Bairros cobertos & 1, 2, 3 & 2, 4, 5 & 3, 5, 6 & 4, 7 & 6, 7, 8 & 1, 8\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\passo{Passo 1 --- Variáveis e modelo}
+$y_\ell\in\{0,1\}$: instalar base no local $\ell$. Para cada bairro, escreva quais locais o cobrem: é a tabela
+``invertida''.
+\begin{align*}
+  \min\ & \sum_\ell y_\ell \qquad(\text{ou } \textstyle\sum_\ell f_\ell\,y_\ell \text{ no item b})\\
+  \text{s.a.}\ & y_1 + y_6 \ge 1 \ (\text{bairro 1}), \quad y_1 + y_2 \ge 1 \ (2), \quad y_1 + y_3 \ge 1 \ (3), \quad y_2 + y_4 \ge 1 \ (4)\\
+  & y_2 + y_3 \ge 1 \ (5), \quad y_3 + y_5 \ge 1 \ (6), \quad y_4 + y_5 \ge 1 \ (7), \quad y_5 + y_6 \ge 1 \ (8)
+\end{align*}
+\porque ``Pelo menos uma base que cobre o bairro'' é uma soma $\ge1$ sobre os locais que o cobrem. Esse é o modelo
+de \emph{cobertura de conjuntos} (set covering).
+
+\passo{Passo 2 --- Solução}
+(a) \textbf{3 bases}: L1, L2 e L5. É fácil provar que 2 não bastam: cada local cobre no máximo 3 bairros, e $2\times3=6<8$.
+(b) Custo mínimo \textbf{145}, com as mesmas bases ($50+40+55$).
+
+\begin{nota}{Para pensar}
+Se a exigência fosse ``cada bairro coberto por \emph{exatamente} uma base'', o modelo viraria \emph{particionamento}
+($=1$), visto no exercício A1. Com $\ge1$, coberturas duplas são permitidas: o bairro 2 aqui é coberto por L1 e por L2.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\exercicio{B4. Escala de enfermeiros}
+\enunciado Um hospital precisa de pelo menos o número de enfermeiros da tabela em cada dia da semana. Cada enfermeiro
+trabalha 5 dias consecutivos e folga 2 (por exemplo, quem começa na sexta trabalha de sexta a terça). Quantos
+enfermeiros contratar, no mínimo?
+\begin{center}
+\begin{tabular}{lccccccc}
+\toprule
+Dia & Seg & Ter & Qua & Qui & Sex & Sáb & Dom\\
+\midrule
+Mínimo & 17 & 13 & 15 & 19 & 14 & 16 & 11\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\passo{Passo 1 --- A escolha da variável (o ponto principal)}
+A tentação é usar ``número de enfermeiros trabalhando no dia $d$''. Isso não funciona, porque não captura a regra dos
+5 dias consecutivos. A variável certa é
+\[
+  x_d \in \mathbb{Z}_{\ge0}: \text{ número de enfermeiros que \emph{começam} a jornada no dia } d .
+\]
+\porque Sabendo o dia de início, sabemos exatamente em quais dias a pessoa trabalha. A regra da jornada fica
+embutida na própria definição da variável.
+
+\passo{Passo 2 --- Modelo}
+No dia $d$ trabalha quem começou em $d$ ou nos 4 dias anteriores (contando de forma circular):
+\begin{align*}
+  \min\ & \sum_d x_d\\
+  \text{s.a.}\ & x_{\text{Seg}} + x_{\text{Dom}} + x_{\text{Sáb}} + x_{\text{Sex}} + x_{\text{Qui}} \ge 17 && \text{(segunda)}\\
+  & x_{\text{Ter}} + x_{\text{Seg}} + x_{\text{Dom}} + x_{\text{Sáb}} + x_{\text{Sex}} \ge 13 && \text{(terça)}\\
+  & \cdots \text{ (uma restrição por dia, sempre o dia e os 4 anteriores)}\\
+  & x_d \in \mathbb{Z}_{\ge0}
+\end{align*}
+
+\passo{Passo 3 --- Solução e prova de otimalidade}
+Ótimo: \textbf{23} enfermeiros. Uma escala: começam 2 na segunda, 6 na terça, 7 na quinta, 3 no sábado e 5 no domingo.
+
+A relaxação linear vale $22{,}33$. Como o número de enfermeiros é inteiro, ele é pelo menos $\lceil22{,}33\rceil=23$, e a
+solução acima atinge 23. Ela é ótima sem precisar de mais argumentos.
+
+\begin{nota}{Erro típico}
+Arredondar para cima cada valor da relaxação:
+\[
+  x\approx(1{,}33;\ 5{,}33;\ 0;\ 7{,}33;\ 0;\ 3{,}33;\ 5) \ \longrightarrow\ (2, 6, 0, 8, 0, 4, 5),
+\]
+o que dá 25 enfermeiros, uma solução viável mas não ótima. Arredondar pode ser muito pior que
+resolver o problema inteiro.
+\end{nota}
+
+% =====================================================================
+\clearpage
+\section*{Nível 2 --- Intermediário}
+\addcontentsline{toc}{section}{Nível 2 --- Intermediário}
+
+\exercicio{I1. Produção com custo fixo}
+\enunciado Uma confecção pode fabricar três produtos (A, B, C), mas cada um exige alugar uma máquina específica, com
+custo fixo semanal. Dados por unidade e disponibilidades da semana:
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+ & A & B & C & Disponível\\
+\midrule
+Lucro unitário (R\$) & 6 & 4 & 7 & ---\\
+Mão de obra (h) & 3 & 2 & 6 & 150\\
+Tecido (m$^2$) & 4 & 3 & 4 & 160\\
+Aluguel da máquina (R\$) & 200 & 150 & 100 & ---\\
+\bottomrule
+\end{tabular}
+\end{center}
+Maximize o lucro semanal (lucro das vendas menos aluguéis).
+
+\passo{Passo 1 --- Variáveis}
+$x_i\in\mathbb{Z}_{\ge0}$ (unidades do produto $i$) e $y_i\in\{0,1\}$ (alugar a máquina do produto $i$).
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \max\ & 6x_A + 4x_B + 7x_C - 200y_A - 150y_B - 100y_C\\
+  \text{s.a.}\ & 3x_A + 2x_B + 6x_C \le 150 && \text{(mão de obra)}\\
+  & 4x_A + 3x_B + 4x_C \le 160 && \text{(tecido)}\\
+  & x_i \le M_i\,y_i \quad i\in\{A,B,C\} && \text{(só produz com a máquina alugada)}
+\end{align*}
+
+\passo{Passo 3 --- Os $M_i$ a partir dos dados}
+O maior $x_i$ possível sozinho é limitado pelos dois recursos: $M_i=\min\{150/h_i,\ 160/t_i\}$, arredondado para baixo
+porque $x_i$ é inteiro:
+\[
+  M_A=\min\{50, 40\}=40, \qquad M_B=\min\{75, 53{,}3\}=53, \qquad M_C=\min\{25, 40\}=25 .
+\]
+
+\passo{Passo 4 --- Solução e verificação à mão}
+Ótimo: \textbf{75}, fabricando só 25 unidades de C. Fabricando um único produto: A dá $6\cdot40-200=40$, B dá
+$4\cdot53-150=62$ e C dá $7\cdot25-100=75$. Já qualquer combinação de dois ou mais produtos paga pelo menos
+$100+150=250$ de aluguel, e o maior lucro variável que os recursos permitem é 250 (calculado pelo solver), então ela rende no máximo 0.
+
+\begin{nota}{A lição}
+Ignorando os aluguéis, o melhor plano é $(30, 0, 10)$, com lucro variável 250. Mas ele usa duas máquinas, e o lucro
+real dele é $250-300=-50$. Custo fixo muda completamente a decisão.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\exercicio{I2. Restrições ``ou-ou'' e ``se-então''}
+\enunciado Uma empresa fabrica dois produtos ($x_1$ e $x_2$ unidades inteiras, no máximo 8 de cada) e quer maximizar
+$3x_1+4x_2$. A produção será feita em \emph{uma} de duas plantas: na planta 1 vale $2x_1+3x_2\le18$; na planta 2 vale
+$4x_1+2x_2\le20$. Além disso, se o produto 1 for fabricado, a embalagem só comporta até 3 unidades do produto 2.
+
+\passo{Passo 1 --- Ou-ou: escolher a planta}
+$w\in\{0,1\}$, com $w=0$ para a planta 1 e $w=1$ para a planta 2:
+\begin{align*}
+  2x_1 + 3x_2 &\le 18 + M_1\,w\\
+  4x_1 + 2x_2 &\le 20 + M_2\,(1-w)
+\end{align*}
+Com $w=0$, só a primeira fica ativa; com $w=1$, só a segunda. Os $M$ vêm dos limites $x_1,x_2\le8$: o maior valor
+possível do lado esquerdo menos o lado direito. $M_1=2\cdot8+3\cdot8-18=22$ e $M_2=4\cdot8+2\cdot8-20=28$.
+
+\passo{Passo 2 --- Se-então: a regra da embalagem}
+``Se $x_1>0$, então $x_2\le3$'' liga uma condição sobre uma variável inteira a uma restrição. Use uma binária $z$ como
+intermediária:
+\begin{align*}
+  x_1 &\le 8\,z && \text{($x_1>0$ obriga $z=1$)}\\
+  x_2 &\le 3 + 5\,(1-z) && \text{($z=1$ ativa $x_2\le3$; com $z=0$ fica $x_2\le8$)}
+\end{align*}
+\porque Não dá para escrever ``$x_1>0$'' diretamente. Quebramos a implicação em duas partes:
+$x_1>0\Rightarrow z=1$ e $z=1\Rightarrow x_2\le3$. O 5 é o big-M desta restrição: $8-3$.
+
+\passo{Passo 3 --- Solução}
+Ótimo: \textbf{32}, com $x=(0, 8)$ na planta 2. Sem a regra da embalagem o ótimo seria 35, com $x=(1, 8)$ na planta 2, mas
+aí o produto 1 é fabricado junto com 8 unidades do produto 2, o que a regra proíbe. Na planta 1 o melhor seria 26, com
+$x=(6,2)$. Os valores foram conferidos por enumeração de todos os 81 pares $(x_1,x_2)$.
+
+% ---------------------------------------------------------------------
+\exercicio{I3. Corte unidimensional (padrões de corte)}
+\enunciado Uma serralheria corta barras de 10\,m para atender pedidos de 14 peças de 3\,m, 10 peças de 4\,m e
+7 peças de 5\,m. Quantas barras usar, no mínimo?
+
+\passo{Passo 1 --- A ideia: decidir \emph{padrões}, não peças}
+Um \emph{padrão de corte} é uma forma de cortar uma barra. Listamos os padrões \emph{maximais}, aqueles em que não cabe
+mais nenhuma peça na sobra:
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+Padrão & Peças de 3\,m & Peças de 4\,m & Peças de 5\,m & Sobra (m)\\
+\midrule
+$p_1$ & 3 & 0 & 0 & 1\\
+$p_2$ & 2 & 1 & 0 & 0\\
+$p_3$ & 1 & 0 & 1 & 2\\
+$p_4$ & 0 & 2 & 0 & 2\\
+$p_5$ & 0 & 1 & 1 & 1\\
+$p_6$ & 0 & 0 & 2 & 0\\
+\bottomrule
+\end{tabular}
+\end{center}
+\porque A alternativa (``a peça $k$ vai para a barra $b$'') cria muitas variáveis e muitas soluções equivalentes, porque
+as barras são idênticas. Com padrões, a pergunta vira apenas ``quantas barras corto de cada jeito?''.
+
+\passo{Passo 2 --- Modelo}
+$x_p\in\mathbb{Z}_{\ge0}$: número de barras cortadas no padrão $p$; $a_{kp}$ é o número de peças do tamanho $k$ no padrão $p$.
+\begin{align*}
+  \min\ & \sum_p x_p\\
+  \text{s.a.}\ & 3x_1 + 2x_2 + x_3 \ge 14 && \text{(peças de 3\,m)}\\
+  & x_2 + 2x_4 + x_5 \ge 10 && \text{(peças de 4\,m)}\\
+  & x_3 + x_5 + 2x_6 \ge 7 && \text{(peças de 5\,m)}
+\end{align*}
+O $\ge$ permite peças a mais, que viram estoque. Essa é a formulação de Gilmore e Gomory. Em problemas grandes, os padrões
+não são listados todos de antemão: eles são gerados conforme a necessidade (geração de colunas).
+
+\passo{Passo 3 --- Solução e prova}
+Ótimo: \textbf{12 barras}: 7 no padrão $p_2$, 3 no $p_6$, 1 no $p_4$ e 1 no $p_5$. O comprimento total pedido é
+$42+40+35=117$\,m, então são necessárias pelo menos $\lceil117/10\rceil=12$ barras, e a solução atinge esse limite.
+
+% ---------------------------------------------------------------------
+\exercicio{I4. Desconto por quantidade (custo linear por partes)}
+\enunciado Uma fábrica precisa comprar 420\,kg de uma resina. O fornecedor 1 dá desconto incremental: os primeiros 100\,kg
+custam R\$\,10/kg, do 101.º ao 300.º kg custam R\$\,8/kg e do 301.º ao 500.º kg custam R\$\,6/kg. O fornecedor 2 cobra
+R\$\,7,50/kg, vende no máximo 250\,kg e cobra frete fixo de R\$\,300 se for usado. Minimize o custo da compra.
+
+\passo{Passo 1 --- Dividir a compra do fornecedor 1 em faixas}
+$s_1\in[0,100]$, $s_2\in[0,200]$, $s_3\in[0,200]$: quantidade comprada em cada faixa de preço. A compra do fornecedor 1 é
+$s_1+s_2+s_3$ e o custo é $10s_1+8s_2+6s_3$.
+
+\passo{Passo 2 --- Por que é preciso binárias aqui}
+O preço \emph{cai} com a quantidade (custo côncavo). Sem nenhuma restrição extra, o solver, que minimiza, compraria direto na
+faixa mais barata ($s_3$) sem ``passar'' pelas faixas caras, o que é impossível na vida real. Precisamos forçar a ordem:
+só se compra na faixa $k+1$ se a faixa $k$ estiver cheia. Com $z_k\in\{0,1\}$ indicando que a faixa $k$ está em uso:
+\begin{align*}
+  s_k &\le \ell_k\,z_k && k=1,2,3 \quad(\ell = 100, 200, 200)\\
+  s_k &\ge \ell_k\,z_{k+1} && k=1,2 \quad\text{(usar a faixa seguinte exige esta cheia)}
+\end{align*}
+\porque Se o preço \emph{subisse} com a quantidade (custo convexo), as binárias seriam desnecessárias: o solver encheria as
+faixas baratas primeiro por conta própria. Custo côncavo num problema de mínimo é o caso que exige binárias.
+
+\passo{Passo 3 --- Modelo completo}
+\begin{align*}
+  \min\ & 10s_1 + 8s_2 + 6s_3 + 7{,}5\,q + 300\,u\\
+  \text{s.a.}\ & s_1 + s_2 + s_3 + q = 420\\
+  & q \le 250\,u && \text{(fornecedor 2 só com frete pago)}\\
+  & \text{restrições de faixa do passo 2}, \quad z_k, u\in\{0,1\}
+\end{align*}
+
+\passo{Passo 4 --- Solução}
+Ótimo: \textbf{R\$\,3320}, comprando tudo do fornecedor 1: $100\cdot10+200\cdot8+120\cdot6=1000+1600+720$. Usar o fornecedor 2 ao
+máximo custaria $250\cdot7{,}5+300=2175$, mais 170\,kg do fornecedor 1 por $1000+560=1560$, total 3735.
+
+\begin{nota}{Erro típico}
+Esquecer as restrições de faixa. O modelo devolve R\$\,3000, com $s=(20, 200, 200)$: compra 200\,kg a R\$\,6 tendo comprado
+só 20\,kg da primeira faixa, um preço que o fornecedor nunca daria.
+\end{nota}
+
+% =====================================================================
+\clearpage
+\section*{Nível 3 --- Avançado}
+\addcontentsline{toc}{section}{Nível 3 --- Avançado}
+
+\exercicio{A1. Escala de tripulações: particionamento \texorpdfstring{$\times$}{x} cobertura}
+\enunciado Uma companhia aérea precisa atribuir tripulações a 6 voos. O setor de planejamento gerou 10 \emph{jornadas}
+viáveis (sequências de voos que uma tripulação consegue fazer em um dia, respeitando as regras trabalhistas), cada uma
+com seu custo. Cada voo precisa de exatamente uma tripulação trabalhando.
+\begin{center}
+\begin{tabular}{lcccccccccc}
+\toprule
+Jornada & J1 & J2 & J3 & J4 & J5 & J6 & J7 & J8 & J9 & J10\\
+\midrule
+Voos & 1,2 & 3,4 & 5,6 & 1,3,5 & 2,4,6 & 1,4 & 2,3,6 & 5 & 1,2,3,4 & 4,5,6\\
+Custo & 5 & 6 & 6 & 9 & 8 & 4 & 7 & 3 & 7 & 5\\
+\bottomrule
+\end{tabular}
+\end{center}
+(a) Modele o problema. (b) O que muda se for permitido que uma tripulação viaje como passageira em um voo já coberto
+(\emph{deadhead})?
+
+\passo{Passo 1 --- Variáveis e modelo de particionamento}
+$x_j\in\{0,1\}$: a jornada $j$ é escolhida. Para cada voo, a soma das jornadas que o contêm deve ser \emph{exatamente} 1:
+\begin{align*}
+  \min\ & \sum_j c_j\,x_j\\
+  \text{s.a.}\ & x_1 + x_4 + x_6 + x_9 = 1 && \text{(voo 1)}\\
+  & x_1 + x_5 + x_7 + x_9 = 1 && \text{(voo 2)}\\
+  & x_2 + x_4 + x_7 + x_9 = 1 && \text{(voo 3)}\\
+  & x_2 + x_5 + x_6 + x_9 + x_{10} = 1 && \text{(voo 4)}\\
+  & x_3 + x_4 + x_8 + x_{10} = 1 && \text{(voo 5)}\\
+  & x_3 + x_5 + x_7 + x_{10} = 1 && \text{(voo 6)}
+\end{align*}
+\porque Toda a complexidade das regras trabalhistas ficou na \emph{geração} das jornadas. O modelo de otimização só
+escolhe uma combinação delas. É a mesma ideia dos padrões de corte (I3): enumerar as opções viáveis e escolher entre elas.
+
+\passo{Passo 2 --- Solução (a)}
+Ótimo do particionamento: \textbf{13}, com J9 (voos 1 a 4) e J3 (voos 5 e 6).
+
+\passo{Passo 3 --- Com deadhead (b): cobertura}
+Se uma tripulação pode viajar como passageira, um voo pode aparecer em mais de uma jornada escolhida. As restrições
+passam a ser $\ge1$ (cobertura). O ótimo cai para \textbf{12}, com J9 e J10: o voo 4 é coberto pelas duas, e uma das
+tripulações viaja nele como passageira.
+
+\begin{nota}{A lição}
+A diferença entre $=1$ e $\ge1$ não é detalhe de notação: ela representa uma regra operacional. A cobertura é mais
+fácil de resolver (tem mais soluções viáveis) e dá um limitante inferior para o particionamento.
+\end{nota}
+
+% ---------------------------------------------------------------------
+\exercicio{A2. Programação de tarefas em job shop}
+\enunciado Três ordens de produção passam por três máquinas, cada uma com seu próprio roteiro (a ordem das máquinas é
+fixa para cada ordem de produção). Cada máquina faz uma operação por vez, sem interrupção. Minimize o instante em que tudo
+termina (makespan).
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Ordem & Roteiro (máquina, tempo)\\
+\midrule
+1 & M1 (3) $\to$ M2 (2) $\to$ M3 (2)\\
+2 & M1 (2) $\to$ M3 (1) $\to$ M2 (4)\\
+3 & M2 (4) $\to$ M3 (3)\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\passo{Passo 1 --- Variáveis}
+$S_{jo}\ge0$: início da operação $o$ da ordem $j$; $C_{\max}$: makespan; e, para cada par de operações que usam a mesma
+máquina, uma binária $y$ que escolhe qual vem primeiro.
+
+\passo{Passo 2 --- Dois tipos de restrição}
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Roteiro} (dentro de uma ordem): a operação seguinte só começa quando a anterior termina, por exemplo
+        $S_{12}\ge S_{11}+3$ e $S_{13}\ge S_{12}+2$. A ordem é fixa, então não há escolha nem binária.
+  \item \textbf{Máquina} (entre ordens): duas operações na mesma máquina não se sobrepõem. É uma disjunção, como no
+        exercício 3.1 dos Desafios. Para as operações $(j,o)$ e $(k,q)$ na mesma máquina:
+        \[
+          S_{jo} + p_{jo} \le S_{kq} + H\,(1-y), \qquad S_{kq} + p_{kq} \le S_{jo} + H\,y .
+        \]
+\end{enumerate}
+Mais $C_{\max}\ge S_{j,\text{última}}+p_{j,\text{última}}$ para cada ordem, e $\min C_{\max}$.
+
+\passo{Passo 3 --- Quantas binárias e qual $M$?}
+Pares na mesma máquina: M1 tem as ordens 1 e 2 (1 par); M2 tem as ordens 1, 2 e 3 (3 pares); M3 tem as ordens 1, 2 e 3 (3 pares).
+São 7 binárias. Para o $M$: executar todas as operações em sequência, sem paralelismo, termina em
+$H=\sum p=7+7+7=21$, então nenhuma solução precisa passar de 21 e $M=H=21$ basta.
+
+\passo{Passo 4 --- Solução}
+Ótimo: \textbf{11}.
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Máquina & Sequência (intervalos) & \\
+\midrule
+M1 & ordem 2 [0, 2], ordem 1 [2, 5] & \\
+M2 & ordem 3 [0, 4], ordem 1 [5, 7], ordem 2 [7, 11] & \\
+M3 & ordem 2 [2, 3], ordem 3 [4, 7], ordem 1 [7, 9] & \\
+\bottomrule
+\end{tabular}
+\end{center}
+Limitante simples: a máquina M2 tem $2+4+4=10$ horas de trabalho, então o makespan é pelo menos 10. O solver prova que
+10 não é atingível por causa dos roteiros.
+
+% ---------------------------------------------------------------------
+\exercicio{A3. Roteamento de veículos com capacidade}
+\enunciado Um depósito em $(0,0)$ atende 6 clientes com veículos de capacidade 15 (há 3 veículos disponíveis). A distância
+é a de Manhattan. Cada cliente é visitado por exatamente um veículo; cada veículo sai do depósito e volta a ele, e a carga
+de uma rota não pode passar de 15. Minimize a distância total.
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+Cliente & 1 & 2 & 3 & 4 & 5 & 6\\
+\midrule
+Posição & (2, 4) & (5, 3) & (6, $-1$) & ($-3$, 3) & ($-4$, $-2$) & (1, $-5$)\\
+Demanda $q_i$ & 4 & 6 & 5 & 7 & 4 & 6\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\passo{Passo 1 --- Variáveis}
+$x_{ij}\in\{0,1\}$ (um veículo vai de $i$ a $j$); $u_i$: carga acumulada na rota até o cliente $i$, inclusive, com
+$q_i\le u_i\le15$; e $K\in\{0,\dots,3\}$, o número de veículos usados.
+
+\passo{Passo 2 --- Modelo}
+\begin{align*}
+  \min\ & \sum_{i\ne j} d_{ij}\,x_{ij}\\
+  \text{s.a.}\ & \sum_{j} x_{ij} = 1, \quad \sum_{j} x_{ji} = 1 && \forall\,\text{cliente } i\\
+  & \sum_{j} x_{0j} = K, \quad \sum_{j} x_{j0} = K && \text{(saem e voltam $K$ veículos)}\\
+  & u_j \ge u_i + q_j - 15\,(1 - x_{ij}) && \forall\,\text{clientes } i\ne j\\
+  & q_i \le u_i \le 15
+\end{align*}
+\porque A restrição em $u$ é o MTZ do caixeiro (exercício 1.2 dos Desafios), com a carga no lugar da posição. Se $x_{ij}=1$, a carga
+em $j$ é a carga em $i$ mais a demanda de $j$. Ela faz dois trabalhos de uma vez: impede subciclos sem o depósito (a carga
+teria de crescer para sempre) e, com $u_i\le15$, garante a capacidade do veículo. O big-M é a própria capacidade 15: com
+$x_{ij}=0$ fica $u_j\ge u_i+q_j-15$, sempre verdade porque $u_i\le15$ e $u_j\ge q_j$.
+
+\passo{Passo 3 --- Solução}
+A demanda total é 32 e cada veículo leva 15, então são necessários pelo menos $\lceil32/15\rceil=3$ veículos. Ótimo:
+\textbf{52}, com as rotas
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Rota & Carga & Distância\\
+\midrule
+$0\to3\to2\to1\to0$ & $5+6+4=15$ & $7+5+4+6=22$\\
+$0\to5\to4\to0$ & $4+7=11$ & $6+6+6=18$\\
+$0\to6\to0$ & 6 & $6+6=12$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{nota}{Erro típico}
+Usar só a capacidade ``por rota'' sem uma variável de carga. Sem $u_i$ não há como saber quais clientes estão na mesma rota,
+e o modelo aceitaria subciclos que nunca passam pelo depósito.
+\end{nota}
+
+% =====================================================================
+\clearpage
+\section*{Resumo: qual técnica aparece em cada exercício}
+\addcontentsline{toc}{section}{Resumo: qual técnica aparece em cada exercício}
+\begin{center}
+\begin{tabular}{>{\raggedright}p{3.2cm}>{\raggedright}p{6.2cm}>{\raggedright\arraybackslash}p{4.8cm}}
+\toprule
+Exercício & Técnica principal & Ideia-chave\\
+\midrule
+B1 Projetos & mochila + regras lógicas & $\le$ para ``se'', $=$ para ``os dois ou nenhum''\\
+B2 Designação & designação & relaxação já é inteira\\
+B3 Ambulâncias & cobertura de conjuntos & soma $\ge1$ por bairro\\
+B4 Enfermeiros & variável ``quem começa no dia $d$'' & $\lceil$relaxação$\rceil$ prova o ótimo\\
+I1 Custo fixo & $x\le M_i\,y$ com $M_i$ dos recursos & custo fixo muda a decisão\\
+I2 Plantas & ou-ou e se-então & binária intermediária $z$\\
+I3 Corte & padrões de corte (Gilmore--Gomory) & decidir padrões, não peças\\
+I4 Desconto & linear por partes côncavo & faixas em ordem exigem binárias\\
+A1 Tripulações & particionamento $\times$ cobertura & $=1$ ou $\ge1$ é regra operacional\\
+A2 Job shop & roteiro + disjunções por máquina & $M=\sum p$\\
+A3 Roteamento & MTZ com carga & $u$ elimina subciclos e limita carga\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{Referência}
+Arenales, M.; Armentano, V.; Morabito, R.; Yanasse, H. \emph{Pesquisa Operacional}. Rio de Janeiro: Elsevier/Campus, 2007.
+
+\end{document}
